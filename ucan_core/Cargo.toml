@@ -1,0 +1,15 @@
+[package]
+name = "ucan_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dupe.workspace = true
+ipld-core.workspace = true
+nom.workspace = true
+nonempty.workspace = true
+rand.workspace = true
+signature.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+typed-builder.workspace = true

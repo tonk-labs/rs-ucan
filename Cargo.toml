@@ -1,12 +1,32 @@
 [workspace]
+resolver = "2"
 members = [
-  "ucan",
-  "ucan-key-support",
+    "ucan_core",
+    "ucan_wasm"
 ]
 
-resolver = "2"
+[workspace.package]
+authors = [
+    "Brooklyn Zelenka <hello@brooklynzelenka.com>",
+]
 
-# Speedup build on macOS
-# See https://blog.rust-lang.org/2021/03/25/Rust-1.51.0.html#splitting-debug-information
-[profile.dev]
-split-debuginfo = "unpacked"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/ucan-wg/rs-ucan"
+rust-version = "1.85.0"
+version = "0.1.0"
+
+[workspace.dependencies]
+blake3 = "1.5"
+dupe = "0.9.0"
+ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
+futures = "0.3.31"
+ipld-core = { version = "0.4.2", features = ["serde"] }
+nom = "8.0"
+nonempty = { version = "0.10.0", features = ["serialize"] }
+rand = "0.9.1"
+serde = { version = "1.0", features = ["derive", "rc"] }
+signature = "2.2"
+thiserror = "1.0"
+tracing = "0.1.40"
+typed-builder = "0.21.0"
