@@ -23,6 +23,7 @@ ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
 futures = "0.3.31"
 ipld-core = { version = "0.4.2", features = ["serde"] }
 nom = "8.0"
+nom-unicode = "0.4"
 nonempty = { version = "0.10.0", features = ["serialize"] }
 rand = "0.9.1"
 serde = { version = "1.0", features = ["derive", "rc"] }

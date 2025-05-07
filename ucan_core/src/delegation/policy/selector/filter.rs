@@ -8,7 +8,7 @@ use nom::{
     error::context,
     multi::many1,
     sequence::{delimited, preceded, terminated},
-    IResult,
+    IResult, Parser,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, str::FromStr};
@@ -71,7 +71,7 @@ impl fmt::Display for Filter {
 
 pub fn parse(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_try, parse_non_try));
-    context("selector_op", p)(input)
+    context("selector_op", p).parse(input)
 }
 
 pub fn parse_try(input: &str) -> IResult<&str, Filter> {
@@ -80,7 +80,7 @@ pub fn parse_try(input: &str) -> IResult<&str, Filter> {
         |found: Filter| Ok::<Filter, ()>(Filter::Try(Box::new(found))),
     );
 
-    context("try", p)(input)
+    context("try", p).parse(input)
 }
 
 pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
@@ -89,12 +89,12 @@ pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
         |found: Filter| Ok::<Filter, ()>(Filter::Try(Box::new(found))),
     );
 
-    context("try", p)(input)
+    context("try", p).parse(input)
 }
 
 pub fn parse_non_try(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_values, parse_field, parse_array_index));
-    context("non_try", p)(input)
+    context("non_try", p).parse(input)
 }
 
 pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
@@ -105,22 +105,24 @@ pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
         Ok::<Filter, ()>(Filter::ArrayIndex(idx))
     });
 
-    context("array_index", array_index)(input)
+    context("array_index", array_index).parse(input)
 }
 
 pub fn parse_values(input: &str) -> IResult<&str, Filter> {
-    context("values", tag("[]"))(input).map(|(rest, _)| (rest, Filter::Values))
+    context("values", tag("[]"))
+        .parse(input)
+        .map(|(rest, _)| (rest, Filter::Values))
 }
 
 pub fn parse_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_delim_field, parse_dot_field));
 
-    context("map_field", p)(input)
+    context("map_field", p).parse(input)
 }
 
 pub fn parse_dot_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_dot_alpha_field, parse_dot_underscore_field));
-    context("dot_field", p)(input)
+    context("dot_field", p).parse(input)
 }
 
 fn dot_starter(input: &str) -> IResult<&str, &str> {
@@ -164,7 +166,7 @@ pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
         },
     );
 
-    context("dot_field", p)(input)
+    context("dot_field", p).parse(input)
 }
 
 pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
@@ -173,7 +175,7 @@ pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
         Ok::<Filter, ()>(Filter::Field(key))
     });
 
-    context("dot_field", p)(input)
+    context("dot_field", p).parse(input)
 }
 
 pub fn parse_empty_quotes_field(input: &str) -> IResult<&str, Filter> {
@@ -181,7 +183,7 @@ pub fn parse_empty_quotes_field(input: &str) -> IResult<&str, Filter> {
         Ok::<Filter, ()>(Filter::Field("".to_string()))
     });
 
-    context("empty_quotes_field", p)(input)
+    context("empty_quotes_field", p).parse(input)
 }
 
 pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
@@ -242,7 +244,7 @@ pub fn parse_delim_field(input: &str) -> IResult<&str, Filter> {
         |found: &str| Ok::<Filter, ()>(Filter::Field(found.to_string())),
     );
 
-    context("delimited_field", alt((p, parse_empty_quotes_field)))(input)
+    context("delimited_field", alt((p, parse_empty_quotes_field))).parse(input)
 }
 
 impl FromStr for Filter {

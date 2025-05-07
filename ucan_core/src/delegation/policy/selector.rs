@@ -10,7 +10,7 @@ use self::{
 };
 
 use filter::Filter;
-use nom::{self, character::complete::char, multi::many0, sequence::preceded};
+use nom::{self, character::complete::char, multi::many0, sequence::preceded, Parser};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::{fmt, str::FromStr};
@@ -74,7 +74,7 @@ impl FromStr for Selector {
         let mut acc = vec![];
 
         if let Ok((more, found)) =
-            nom::branch::alt((filter::parse_try_dot_field, filter::parse_dot_field))(s)
+            nom::branch::alt((filter::parse_try_dot_field, filter::parse_dot_field)).parse(s)
         {
             working = more;
             acc.push(found);
@@ -82,7 +82,7 @@ impl FromStr for Selector {
             working = &s[1..];
         }
 
-        match preceded(many0(char('?')), many0(filter::parse))(working) {
+        match preceded(many0(char('?')), many0(filter::parse)).parse(working) {
             Ok(("", ops)) => {
                 let mut mut_ops = ops.clone();
                 acc.append(&mut mut_ops);
