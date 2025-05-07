@@ -2,7 +2,7 @@
 
 The `ucan` team welcomes security reports and is committed to
 providing prompt attention to security issues. Security issues should be
-reported privately via [quinn@fission.codes][support-email]. Security issues should
+reported privately via [hello@brooklynzelenka.com][support-email]. Security issues should
 not be reported via the public GitHub Issue tracker.
 
 ## Security advisories
@@ -14,4 +14,4 @@ Github respository's [security portal][sec-advisories] and and the
 
 [rustsec-db]: https://github.com/RustSec/advisory-db
 [sec-advisories]: https://github.com/ucan-wg/ucan/security/advisories
-[support-email]: mailto:quinn@fission.codes
+[support-email]: mailto:hello@brooklynzelenka.com

@@ -79,7 +79,7 @@ This covers
 
 All instances of abusive, harassing, or otherwise unacceptable behavior should
 be reported by contacting the project and community maintainers at
-[quinn@fission.codes][support-email]. All complaints will be reviewed and
+[hello@brooklynzelenka.com][support-email]. All complaints will be reviewed and
 investigated and will result in a response that is deemed necessary and
 appropriate to the circumstances.
 
@@ -94,7 +94,7 @@ maintainers of the community and associated projects.
 ## Need help?
 
 If you are experiencing harassment, witness an incident or have concerns about
-content please contact us at [quinn@fission.codes][support-email].
+content please contact us at [hello@brooklynzelenka.com][support-email].
 
 ## Attribution
 
@@ -105,4 +105,4 @@ among other sources like [!!con’s Code of Conduct][!!con] and
 [!!con]: https://bangbangcon.com/conduct.html
 [contributor-cov]: https://www.contributor-covenant.org/version/2/1/code_of_conduct/
 [mozilla]: https://www.mozilla.org/en-US/about/governance/policies/participation/
-[support-email]: mailto:quinn@fission.codes
+[support-email]: mailto:hello@brooklynzelenka.com
