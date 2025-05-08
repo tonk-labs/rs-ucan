@@ -6,8 +6,8 @@ use std::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::{self, Arbitrary, Unstructured};
 
 #[derive(Clone)]
 pub struct Select<T> {
@@ -180,15 +180,10 @@ impl<T> PartialOrd for Select<T> {
     }
 }
 
-#[cfg(feature = "test_utils")]
-impl<T: 'static> Arbitrary for Select<T> {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        prop::collection::vec(Filter::arbitrary(), 1..10)
-            .prop_map(Select::new)
-            .boxed()
+#[cfg(any(test, feature = "test_utils"))]
+impl<'a, T> Arbitrary<'a> for Select<T> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        todo!("FIXME port from old proptest")
     }
 }
 
@@ -197,7 +192,6 @@ mod tests {
     use super::*;
     use crate::ipld;
     use pretty_assertions as pretty;
-    use proptest::prelude::*;
     use testresult::TestResult;
 
     mod get {

@@ -1,36 +1,132 @@
 use super::selector::{filter::Filter, select::Select, SelectorError};
-use crate::{collection::Collection, number::Number};
+use crate::{collection::Collection, ipld::InternalIpld, number::Number};
 use ipld_core::ipld::Ipld;
 use std::str::FromStr;
 use thiserror::Error;
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::{self, Arbitrary, Unstructured};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Predicate {
-    // Comparison
+    /// Selector equality check
     Equal(Select<Ipld>, Ipld),
 
+    /// Selector greater than check
     GreaterThan(Select<Number>, Number),
+
+    /// Selector greater than or equal check
     GreaterThanOrEqual(Select<Number>, Number),
 
+    /// Selector less than check
     LessThan(Select<Number>, Number),
+
+    /// Selector less than or equal check
     LessThanOrEqual(Select<Number>, Number),
 
+    /// Seelctor `like` matcher check (glob patterns)
     Like(Select<String>, String),
 
-    // Connectives
+    /// Negation
     Not(Box<Predicate>),
+
+    /// Conjunction
     And(Box<Predicate>, Box<Predicate>),
+
+    /// Disjunction
     Or(Box<Predicate>, Box<Predicate>),
 
-    // Collection iteration
-    Every(Select<Collection>, Box<Predicate>), // ∀x ∈ xs
-    Some(Select<Collection>, Box<Predicate>),  // ∃x ∈ xs
+    /// Universal quantification over a collection
+    ///
+    /// "For all elements of a collection" (∀x ∈ xs) the precicate must hold
+    Every(Select<Collection>, Box<Predicate>),
+
+    /// Existential quantification over a collection
+    ///
+    /// "For any element of a collection" (∃x ∈ xs) the predicate must hold
+    Some(Select<Collection>, Box<Predicate>),
+}
+
+#[cfg(any(test, feature = "test_utils"))]
+impl<'a> Arbitrary<'a> for Predicate {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        enum Pick {
+            Equal,
+            GreaterThan,
+            GreaterThanOrEqual,
+            LessThan,
+            LessThanOrEqual,
+            Or,
+            And,
+            Like,
+            Every,
+            Some,
+        }
+
+        let op = u.choose(&[
+            Pick::Equal,
+            Pick::GreaterThan,
+            Pick::GreaterThanOrEqual,
+            Pick::LessThan,
+            Pick::LessThanOrEqual,
+            Pick::Like,
+            Pick::Or,
+            Pick::And,
+            Pick::Every,
+            Pick::Some,
+        ])?;
+
+        match op {
+            Pick::Equal => Ok(Predicate::Equal(
+                Select::<Ipld>::arbitrary(u)?,
+                InternalIpld::arbitrary(u)?.into(),
+            )),
+            Pick::GreaterThan => Ok(Predicate::GreaterThan(
+                Select::<Number>::arbitrary(u)?,
+                Number::arbitrary(u)?.into(),
+            )),
+            Pick::GreaterThanOrEqual => Ok(Predicate::GreaterThanOrEqual(
+                Select::<Number>::arbitrary(u)?,
+                Number::arbitrary(u)?.into(),
+            )),
+            Pick::LessThan => Ok(Predicate::LessThan(
+                Select::<Number>::arbitrary(u)?,
+                Number::arbitrary(u)?.into(),
+            )),
+            Pick::LessThanOrEqual => Ok(Predicate::LessThanOrEqual(
+                Select::<Number>::arbitrary(u)?,
+                Number::arbitrary(u)?.into(),
+            )),
+            Pick::Like => Ok(Predicate::Like(
+                Select::<String>::arbitrary(u)?,
+                String::arbitrary(u)?.into(),
+            )),
+            Pick::Or => {
+                let lhs = Predicate::arbitrary(u)?;
+                let rhs = Predicate::arbitrary(u)?;
+                Ok(Predicate::Or(Box::new(lhs), Box::new(rhs)))
+            }
+            Pick::And => {
+                let lhs = Predicate::arbitrary(u)?;
+                let rhs = Predicate::arbitrary(u)?;
+                Ok(Predicate::And(Box::new(lhs), Box::new(rhs)))
+            }
+            Pick::Every => {
+                let xs = Select::<Collection>::arbitrary(u)?;
+                let p = Predicate::arbitrary(u)?;
+                Ok(Predicate::Every(xs, Box::new(p)))
+            }
+            Pick::Some => {
+                let xs = Select::<Collection>::arbitrary(u)?;
+                let p = Predicate::arbitrary(u)?;
+                Ok(Predicate::Some(xs, Box::new(p)))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Harmonization {
     Equal,            // e.g. x > 10 vs x > 10
     Conflict,         // e.g. x == 1 vs x == 2
@@ -660,6 +756,7 @@ impl Predicate {
     }
 }
 
+/// Check if a string matches a glob pattern
 pub fn glob(input: &str, pattern: &str) -> bool {
     if pattern.is_empty() {
         return input == "";
@@ -904,55 +1001,9 @@ impl From<Predicate> for Ipld {
     }
 }
 
-#[cfg(feature = "test_utils")]
-impl Arbitrary for Predicate {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
-        let leaf = prop_oneof![
-            (Select::arbitrary(), Ipld::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::Equal(lhs, rhs) }),
-            (Select::arbitrary(), Number::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::GreaterThan(lhs, rhs) }),
-            (Select::arbitrary(), Number::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::GreaterThanOrEqual(lhs, rhs) }),
-            (Select::arbitrary(), Number::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::LessThan(lhs, rhs) }),
-            (Select::arbitrary(), Number::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::LessThanOrEqual(lhs, rhs) }),
-            (Select::arbitrary(), String::arbitrary())
-                .prop_map(|(lhs, rhs)| { Predicate::Like(lhs, rhs) })
-        ];
-
-        let connective = leaf.clone().prop_recursive(8, 16, 4, |inner| {
-            prop_oneof![
-                (inner.clone(), inner.clone())
-                    .prop_map(|(lhs, rhs)| { Predicate::And(Box::new(lhs), Box::new(rhs)) }),
-                (inner.clone(), inner.clone())
-                    .prop_map(|(lhs, rhs)| { Predicate::Or(Box::new(lhs), Box::new(rhs)) }),
-            ]
-        });
-
-        let quantified = leaf.clone().prop_recursive(8, 16, 4, |inner| {
-            prop_oneof![
-                (Select::arbitrary(), inner.clone())
-                    .prop_map(|(xs, p)| { Predicate::Every(xs, Box::new(p)) }),
-                (Select::arbitrary(), inner.clone())
-                    .prop_map(|(xs, p)| { Predicate::Some(xs, Box::new(p)) }),
-            ]
-        });
-
-        prop_oneof![leaf, connective, quantified].boxed()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
-    use pretty_assertions as pretty;
-    use proptest::prelude::*;
     use testresult::TestResult;
 
     mod glob {

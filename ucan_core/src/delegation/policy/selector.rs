@@ -16,10 +16,11 @@ use std::cmp::Ordering;
 use std::{fmt, str::FromStr};
 use thiserror::Error;
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::Arbitrary;
 
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub struct Selector(pub Vec<Filter>);
 
 impl Selector {
@@ -140,23 +141,10 @@ impl PartialOrd for Selector {
     }
 }
 
-#[cfg(feature = "test_utils")]
-impl Arbitrary for Selector {
-    type Parameters = <Filter as Arbitrary>::Parameters;
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        prop::collection::vec(Filter::arbitrary_with(args), 0..12)
-            .prop_map(|ops| Selector(ops))
-            .boxed()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions as pretty;
-    use proptest::prelude::*;
     use testresult::TestResult;
 
     mod serialization {

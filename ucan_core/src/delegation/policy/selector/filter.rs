@@ -13,8 +13,8 @@ use nom::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, str::FromStr};
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::{self, Arbitrary, Unstructured};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Filter {
@@ -270,28 +270,27 @@ impl<'de> Deserialize<'de> for Filter {
     }
 }
 
-#[cfg(feature = "test_utils")]
-impl Arbitrary for Filter {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
-        prop_oneof![
-            i32::arbitrary().prop_map(|i| Filter::ArrayIndex(i)),
-            "[a-zA-Z_ ]*".prop_map(Filter::Field),
-            "[a-zA-Z_][a-zA-Z0-9_]*".prop_map(Filter::Field),
-            Just(Filter::Values),
-            // FIXME prop_recursive::lazy(|_| { Filter::arbitrary_with(()).prop_map(Filter::Try) }),
-        ]
-        .boxed()
+#[cfg(any(test, feature = "test_utils"))]
+impl<'a> Arbitrary<'a> for Filter {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        todo!("FIXME port from old proptest")
     }
+    // fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
+    //     prop_oneof![
+    //         i32::arbitrary().prop_map(|i| Filter::ArrayIndex(i)),
+    //         "[a-zA-Z_ ]*".prop_map(Filter::Field),
+    //         "[a-zA-Z_][a-zA-Z0-9_]*".prop_map(Filter::Field),
+    //         Just(Filter::Values),
+    //         // FIXME prop_recursive::lazy(|_| { Filter::arbitrary_with(()).prop_map(Filter::Try) }),
+    //     ]
+    //     .boxed()
+    // }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions as pretty;
-    use proptest::prelude::*;
     use testresult::TestResult;
 
     mod serialization {

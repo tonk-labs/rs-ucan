@@ -51,15 +51,13 @@ Run tests
 ## Benchmarking the Project
 
 For benchmarking and measuring performance, this project leverages
-[Criterion] and a `test_utils` feature flag
-for integrating [proptest] within the the suite for working with
-[strategies] and sampling from randomly generated values.
+[Criterion] and a `test_utils` feature flag.
 
 ## Benchmarks
 
 | Nix     | Cargo                               |
 |---------|-------------------------------------|
-| `bench` | `cargo bench --features test_utils` |
+| `bench` | `cargo bench --features=test_utils` |
 
 ## Contributing
 
@@ -165,6 +163,4 @@ This project is [licensed under the Apache License 2.0][LICENSE], or
 [Nix]:https://nixos.org/download.html
 [Nix flake]: https://nixos.wiki/wiki/Flakes
 [pre-commit]: https://pre-commit.com/
-[proptest]: https://github.com/proptest-rs/proptest
-[strategies]: https://docs.rs/proptest/latest/proptest/strategy/trait.Strategy.html
 [UCAN Discord]: https://discord.gg/4UdeQhw7fv

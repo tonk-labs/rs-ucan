@@ -9,33 +9,16 @@
 )]
 #![deny(unreachable_pub)]
 
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Display},
-    future::Future,
-    str::FromStr,
-};
-
-use ipld_core::ipld::Ipld;
-use serde::de::Error;
-
 pub mod collection;
 pub mod crypto;
 pub mod delegation;
 pub mod did;
+pub mod invocation;
 pub mod number;
+pub mod promise;
+pub mod receipt;
+pub mod task;
 pub mod time;
 
-//////////////////
-//////////////////
-//////////////////
-//////////////////
-
-pub trait Call: From<HashMap<String, Ipld>> + From<HashMap<String, Ipld>> + Debug {
-    type Command: ToString + FromStr + Debug + Display;
-
-    type CallError: Error;
-
-    fn call(&self) -> impl Future<Output = Result<Ipld, Self::CallError>>;
-    fn to_command(&self) -> Self::Command;
-}
+// Internal modules
+pub(crate) mod ipld;

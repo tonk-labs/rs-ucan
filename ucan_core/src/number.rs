@@ -1,11 +1,11 @@
-//! Helpers for working with [`Ipld`] numerics.
+//! [`Ipld`] numerics.
 
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::Arbitrary;
 
 /// The union of [`Ipld`] numeric types
 ///
@@ -15,6 +15,7 @@ use proptest::prelude::*;
 /// [`Predicate`]: crate::delegation::policy::predicate::Predicate
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Number {
     /// Designate a floating point number
     Float(f64),
@@ -55,6 +56,7 @@ impl TryFrom<Ipld> for Number {
     }
 }
 
+/// Error type for [`Number::try_from`]
 #[derive(Debug, Clone, PartialEq, Error)]
 #[error("Expected Ipld numeric, got: {0:?}")]
 pub struct NotANumber(Ipld);
@@ -68,19 +70,5 @@ impl From<i128> for Number {
 impl From<f64> for Number {
     fn from(f: f64) -> Number {
         Number::Float(f)
-    }
-}
-
-#[cfg(feature = "test_utils")]
-impl Arbitrary for Number {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        prop_oneof![
-            any::<f64>().prop_map(Number::Float),
-            any::<i128>().prop_map(Number::Integer),
-        ]
-        .boxed()
     }
 }

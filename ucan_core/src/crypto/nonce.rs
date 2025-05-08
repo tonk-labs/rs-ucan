@@ -3,15 +3,15 @@
 //! [Nonce]: https://en.wikipedia.org/wiki/Cryptographic_nonce
 
 use ipld_core::ipld::Ipld;
-use rand::{rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::Arbitrary;
 
 /// Known [`Nonce`] types
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Nonce {
     /// 128-bit, 16-byte nonce
     Nonce16([u8; 16]),
@@ -74,10 +74,10 @@ impl Nonce {
     ///
     /// assert_eq!(Vec::from(nonce).len(), 16);
     /// ```
-    pub fn generate_16() -> Nonce {
+    pub fn generate_16() -> Result<Nonce, getrandom::Error> {
         let mut buf = [0; 16];
-        rng().fill(&mut buf);
-        Nonce::Nonce16(buf)
+        getrandom::fill(&mut buf)?;
+        Ok(Nonce::Nonce16(buf))
     }
 }
 
@@ -121,76 +121,6 @@ impl TryFrom<Ipld> for Nonce {
             }
         } else {
             Err(())
-        }
-    }
-}
-
-#[cfg(feature = "test_utils")]
-impl Arbitrary for Nonce {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        prop_oneof![
-            any::<[u8; 16]>().prop_map(Nonce::Nonce16),
-            any::<Vec<u8>>().prop_map(Nonce::Custom)
-        ]
-        .boxed()
-    }
-}
-
-// FIXME move module?
-#[cfg(target_arch = "wasm32")]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[wasm_bindgen]
-/// A JavaScript-compatible wrapper for [`Nonce`]
-pub struct JsNonce(#[wasm_bindgen(skip)] pub Nonce);
-
-#[cfg(target_arch = "wasm32")]
-impl From<JsNonce> for Nonce {
-    fn from(newtype: JsNonce) -> Self {
-        newtype.0
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-impl From<Nonce> for JsNonce {
-    fn from(nonce: Nonce) -> Self {
-        JsNonce(nonce)
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-impl JsNonce {
-    /// Generate a 128-bit, 16-byte nonce
-    ///
-    /// # Arguments
-    ///
-    /// * `salt` - A salt. This may be left empty, but is recommended to avoid collision.
-    pub fn generate_16() -> JsNonce {
-        Nonce::generate_16().into()
-    }
-
-    /// Directly lift a 12-byte `Uint8Array` into a [`JsNonce`]
-    ///
-    /// # Arguments
-    ///
-    /// * `nonce` - The exact nonce to convert to a [`JsNonce`]
-    pub fn from_uint8_array(arr: Box<[u8]>) -> JsNonce {
-        Nonce::from(arr.to_vec()).into()
-    }
-
-    /// Expose the underlying bytes of a [`JsNonce`] as a 12-byte `Uint8Array`
-    ///
-    /// # Arguments
-    ///
-    /// * `self` - The [`JsNonce`] to convert to a `Uint8Array`
-    pub fn to_uint8_array(&self) -> Box<[u8]> {
-        match &self.0 {
-            Nonce::Nonce12(nonce) => nonce.to_vec().into_boxed_slice(),
-            Nonce::Nonce16(nonce) => nonce.to_vec().into_boxed_slice(),
-            Nonce::Custom(nonce) => nonce.clone().into_boxed_slice(),
         }
     }
 }

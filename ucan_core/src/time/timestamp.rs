@@ -5,8 +5,8 @@ use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(feature = "test_utils")]
-use proptest::prelude::*;
+#[cfg(any(test, feature = "test_utils"))]
+use arbitrary::{self, Arbitrary, Unstructured};
 
 /// A [`Timestamp`][super::Timestamp] with safe JavaScript interop.
 ///
@@ -54,11 +54,13 @@ impl Timestamp {
             .expect("the current time to be somtime in the 3rd millenium CE")
     }
 
+    /// Get a timestamp 5 minutes from now.
     pub fn five_minutes_from_now() -> Timestamp {
         Self::new(SystemTime::now() + Duration::from_secs(5 * 60))
             .expect("the current time to be somtime in the 3rd millenium CE")
     }
 
+    /// Get a timestamp 5 hours from now.
     pub fn five_years_from_now() -> Timestamp {
         Self::new(SystemTime::now() + Duration::from_secs(5 * 365 * 24 * 60 * 60))
             .expect("the current time to be somtime in the 3rd millenium CE")
@@ -173,16 +175,9 @@ impl<'de> Deserialize<'de> for Timestamp {
 }
 
 #[cfg(any(test, feature = "test_utils"))]
-impl Arbitrary for Timestamp {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (0..(u64::pow(2, 53) - 1))
-            .prop_map(|secs| {
-                Timestamp::new(UNIX_EPOCH + Duration::from_secs(secs))
-                    .expect("the current time to be somtime in the 3rd millenium CE")
-            })
-            .boxed()
+impl<'a> Arbitrary<'a> for Timestamp {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let secs = u.int_in_range(std::ops::RangeInclusive::new(0, u64::pow(2, 53) - 1))?;
+        Ok(Timestamp::postel(UNIX_EPOCH + Duration::from_secs(secs)))
     }
 }

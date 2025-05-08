@@ -1,49 +1,78 @@
+pub mod builder;
 pub mod policy;
 pub mod subject;
 
 use self::subject::DelegatedSubject;
-use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp, Call};
+use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp};
+use builder::{DelegationBuilder, Unset};
 use ipld_core::ipld::Ipld;
-use std::collections::HashMap;
-use typed_builder::TypedBuilder;
+use policy::predicate::Predicate;
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, TypedBuilder)]
-pub struct Delegation<D: Did, C: Call> {
-    issuer: D,
-    audience: D,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Delegation<D: Did> {
+    pub(crate) issuer: D,
+    pub(crate) audience: D,
 
-    subject: DelegatedSubject<D>,
-    command: C::Command,
-    policy: (),
+    pub(crate) subject: DelegatedSubject<D>,
+    pub(crate) command: Vec<String>,
+    pub(crate) policy: Vec<Predicate>,
 
-    expiration: Option<Timestamp>,
-    not_before: Option<Timestamp>,
+    pub(crate) expiration: Option<Timestamp>,
+    pub(crate) not_before: Option<Timestamp>,
 
-    meta: HashMap<String, Ipld>,
-    nonce: Nonce,
+    pub(crate) meta: BTreeMap<String, Ipld>,
+    pub(crate) nonce: Nonce,
 }
 
-impl<D: Did, C: Call> Delegation<D, C> {
-    pub fn new(
-        issuer: D,
-        audience: D,
-        subject: DelegatedSubject<D>,
-        command: C::Command,
-        policy: (),
-        expiration: Option<Timestamp>,
-        not_before: Option<Timestamp>,
-        meta: HashMap<String, Ipld>,
-    ) -> Self {
-        Self {
-            issuer,
-            audience,
-            subject,
-            command,
-            policy,
-            expiration,
-            not_before,
-            meta,
-            nonce: Nonce::generate_16(),
-        }
+impl<D: Did> Delegation<D> {
+    /// Creates a blank [`DelegationBuilder`] instance.
+    pub fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
+        DelegationBuilder::new()
+    }
+
+    /// Getter for the issuer field.
+    pub fn issuer(&self) -> &D {
+        &self.issuer
+    }
+
+    /// Getter for the audience field.
+    pub fn audience(&self) -> &D {
+        &self.audience
+    }
+
+    /// Getter for the subject field.
+    pub fn subject(&self) -> &DelegatedSubject<D> {
+        &self.subject
+    }
+
+    /// Getter for the command field.
+    pub fn command(&self) -> &[String] {
+        &self.command
+    }
+
+    /// Getter for the policy field.
+    pub fn policy(&self) -> &[Predicate] {
+        &self.policy
+    }
+
+    /// Getter for the expiration field.
+    pub fn expiration(&self) -> Option<&Timestamp> {
+        self.expiration.as_ref()
+    }
+
+    /// Getter for the not_before field.
+    pub fn not_before(&self) -> Option<&Timestamp> {
+        self.not_before.as_ref()
+    }
+
+    /// Getter for the meta field.
+    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+        &self.meta
+    }
+
+    /// Getter for the nonce.
+    pub fn nonce(&self) -> &Nonce {
+        &self.nonce
     }
 }

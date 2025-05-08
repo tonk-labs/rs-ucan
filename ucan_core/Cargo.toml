@@ -1,16 +1,30 @@
 [package]
 name = "ucan_core"
-version.workspace = true
+
+authors.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
 
 [dependencies]
+arbitrary = { workspace = true, optional = true }
 dupe.workspace = true
+getrandom.workspace = true
 ipld-core.workspace = true
-nom.workspace = true
 nom-unicode.workspace = true
+nom.workspace = true
 nonempty.workspace = true
-rand.workspace = true
-signature.workspace = true
 serde.workspace = true
+signature.workspace = true
 thiserror.workspace = true
-typed-builder.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+test-log.workspace = true
+testresult.workspace = true
+
+[features]
+test_utils = ["dep:arbitrary"]
