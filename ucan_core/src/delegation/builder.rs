@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, marker::PhantomData};
 ///
 /// Replace these with the expected type to make
 /// the builder convert to the built type.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Unset;
 
 // FIXME move

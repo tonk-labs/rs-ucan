@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use thiserror::Error;
 
 /// An error expressing when a time is larger than 2⁵³ seconds past the Unix epoch
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("Time out of JsTime (2⁵³) range: {:?}", tried)]
 pub struct OutOfRangeError {
     /// The [`SystemTime`] that is outside of the [`JsTime`] range (2⁵³).
@@ -12,7 +12,7 @@ pub struct OutOfRangeError {
 }
 
 /// An error expressing when a time is not within the bounds of a UCAN.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Error)]
 pub enum TimeBoundError {
     /// The UCAN has expired.
     #[error("Expired")]

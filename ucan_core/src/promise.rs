@@ -103,7 +103,7 @@ impl TryFrom<&Promised> for Ipld {
 }
 
 /// Still waiting to resolve a [`Promised`] value.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum WaitingOn {
     /// Waiting on the `Ok` branch of a promise that is not yet resolved.
     #[error("Waiting on an `ok` promise {0}")]

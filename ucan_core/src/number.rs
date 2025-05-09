@@ -13,7 +13,7 @@ use arbitrary::Arbitrary;
 /// bounds checking in [`Predicate`]s.
 ///
 /// [`Predicate`]: crate::delegation::policy::predicate::Predicate
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Number {

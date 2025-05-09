@@ -132,7 +132,7 @@ impl<'a> Arbitrary<'a> for Predicate {
 }
 
 /// How to constraints unify with (or not) with each other.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Harmonization {
     /// Literally equal e.g. `x > 10` and `x > 10`.

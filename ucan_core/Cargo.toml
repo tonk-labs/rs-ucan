@@ -10,7 +10,6 @@ version.workspace = true
 
 [dependencies]
 arbitrary = { workspace = true, optional = true }
-dupe.workspace = true
 getrandom.workspace = true
 ipld-core.workspace = true
 nom-unicode.workspace = true
