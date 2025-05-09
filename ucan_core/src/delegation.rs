@@ -1,3 +1,5 @@
+//! UCAN Delegation
+
 pub mod builder;
 pub mod policy;
 pub mod subject;
@@ -9,6 +11,11 @@ use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
 use std::collections::BTreeMap;
 
+// FIXME tag the spec and link to taht instead
+/// UCAN Delegation
+///
+/// Grant or delegate a UCAN capability to another. This type implements the
+/// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Delegation<D: Did> {
     pub(crate) issuer: D,

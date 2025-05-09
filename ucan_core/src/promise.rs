@@ -1,3 +1,5 @@
+//! Distributed promises
+
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -100,14 +102,18 @@ impl TryFrom<&Promised> for Ipld {
     }
 }
 
+/// Still waiting to resolve a [`Promised`] value.
 #[derive(Debug, Clone, Error)]
 pub enum WaitingOn {
+    /// Waiting on the `Ok` branch of a promise that is not yet resolved.
     #[error("Waiting on an `ok` promise {0}")]
     WaitOk(Cid),
 
+    /// Waiting on the `Err` branch of a promise that is not yet resolved.
     #[error("Waiting on an `err` promise {0}")]
     WaitErr(Cid),
 
+    /// Waiting on either branch of a promise that is not yet resolved.
     #[error("Waiting on an `any` promise {0}")]
     WaitAny(Cid),
 }

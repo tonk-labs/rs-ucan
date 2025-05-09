@@ -1,24 +1,31 @@
+//! UCAN Invocation
+
 use crate::{crypto::nonce::Nonce, did::Did, promise::Promised, time::timestamp::Timestamp};
 use ipld_core::{cid::Cid, ipld::Ipld};
 use std::collections::BTreeMap;
 
+// FIXME tag the spec and link to taht instead
+/// UCAN Invocation
+///
+/// Invoke a UCAN capability. This type implements the
+/// [UCAN Invocation spec](https://github.com/ucan-wg/invocation/README.md).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Invocation<D: Did> {
-    issuer: D,
-    audience: D,
+    pub(crate) issuer: D,
+    pub(crate) audience: D,
 
-    subject: D,
-    command: Vec<String>,
-    arguments: BTreeMap<String, Promised>,
+    pub(crate) subject: D,
+    pub(crate) command: Vec<String>,
+    pub(crate) arguments: BTreeMap<String, Promised>,
 
-    proofs: Vec<Cid>,
-    cause: Option<Cid>,
+    pub(crate) proofs: Vec<Cid>,
+    pub(crate) cause: Option<Cid>,
 
-    issued_at: Option<Timestamp>,
-    expiration: Option<Timestamp>,
+    pub(crate) issued_at: Option<Timestamp>,
+    pub(crate) expiration: Option<Timestamp>,
 
-    meta: BTreeMap<String, Ipld>,
-    nonce: Nonce,
+    pub(crate) meta: BTreeMap<String, Ipld>,
+    pub(crate) nonce: Nonce,
 }
 
 impl<D: Did> Invocation<D> {}

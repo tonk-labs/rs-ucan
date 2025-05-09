@@ -1,9 +1,13 @@
+//! The `Selectable` trait.
+
 use super::error::SelectorErrorReason;
 use crate::{collection::Collection, number::Number};
 use ipld_core::ipld::Ipld;
 use std::collections::BTreeMap;
 
+/// A trait for types that can be selected from [`Ipld`]
 pub trait Selectable: Sized {
+    /// Attempt to select on some [`Ipld`].
     fn try_select(ipld: Ipld) -> Result<Self, SelectorErrorReason>;
 }
 

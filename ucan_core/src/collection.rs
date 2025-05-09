@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
 
+#[cfg(any(test, feature = "test_utils"))]
 use crate::ipld::InternalIpld;
 
 /// [`Ipld`] collection types
@@ -20,11 +21,9 @@ pub enum Collection {
 }
 
 impl Collection {
-    pub fn to_vec(self) -> Vec<Ipld> {
-        match self {
-            Collection::Array(xs) => xs,
-            Collection::Map(xs) => xs.into_values().collect(),
-        }
+    /// Returns the array elements or map values.
+    pub fn to_vec(&self) -> Vec<&Ipld> {
+        self.into()
     }
 }
 
@@ -41,6 +40,24 @@ impl FromIterator<Ipld> for Collection {
             }
         }
         Collection::Map(map)
+    }
+}
+
+impl From<Collection> for Vec<Ipld> {
+    fn from(collection: Collection) -> Self {
+        match collection {
+            Collection::Array(xs) => xs,
+            Collection::Map(xs) => xs.into_values().collect(),
+        }
+    }
+}
+
+impl<'a> From<&'a Collection> for Vec<&'a Ipld> {
+    fn from(collection: &'a Collection) -> Self {
+        match collection {
+            Collection::Array(xs) => xs.iter().collect(),
+            Collection::Map(xs) => xs.values().collect(),
+        }
     }
 }
 

@@ -1,3 +1,5 @@
+//! Typesafe selection on [`Ipld`] values.
+
 use super::Selector;
 use super::{error::SelectorErrorReason, filter::Filter, Selectable, SelectorError};
 use ipld_core::ipld::Ipld;
@@ -9,6 +11,7 @@ use thiserror::Error;
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
 
+/// Typesafe selection via [`Ipld`] selectors.
 #[derive(Clone)]
 pub struct Select<T> {
     filters: Vec<Filter>,
@@ -28,6 +31,7 @@ impl<T> PartialEq for Select<T> {
 }
 
 impl<T> Select<T> {
+    /// Creates a new `Select` instance with the given filters.
     pub fn new(filters: Vec<Filter>) -> Self {
         Self {
             filters,
@@ -35,6 +39,7 @@ impl<T> Select<T> {
         }
     }
 
+    /// Checks if two selectors are related.
     pub fn is_related<U: Clone>(&self, other: &Select<U>) -> bool
     where
         Ipld: From<T> + From<U>,
@@ -44,6 +49,7 @@ impl<T> Select<T> {
 }
 
 impl<T: Selectable> Select<T> {
+    /// Tries to retrieve the value from the given [`Ipld`] using the selector.
     pub fn get(self, ctx: &Ipld) -> Result<T, SelectorError> {
         let got = self.filters.iter().try_fold(
             (ctx.clone(), vec![], false),
@@ -170,6 +176,7 @@ impl<T> FromStr for Select<T> {
     }
 }
 
+/// Error type for parsing a selector.
 #[derive(Debug, PartialEq, Error)]
 #[error("Failed to parse selector: {0}")]
 pub struct ParseError(#[from] nom::Err<super::error::ParseError>);
@@ -183,7 +190,8 @@ impl<T> PartialOrd for Select<T> {
 #[cfg(any(test, feature = "test_utils"))]
 impl<'a, T> Arbitrary<'a> for Select<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        todo!("FIXME port from old proptest")
+        u.arbitrary::<Vec<Filter>>()
+            .map(|filters| Select::new(filters))
     }
 }
 

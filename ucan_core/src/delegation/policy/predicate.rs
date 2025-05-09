@@ -1,5 +1,7 @@
+//! Policy predicates.
+
 use super::selector::{filter::Filter, select::Select, SelectorError};
-use crate::{collection::Collection, ipld::InternalIpld, number::Number};
+use crate::{collection::Collection, number::Number};
 use ipld_core::ipld::Ipld;
 use std::str::FromStr;
 use thiserror::Error;
@@ -7,6 +9,10 @@ use thiserror::Error;
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
 
+#[cfg(any(test, feature = "test_utils"))]
+use crate::ipld::InternalIpld;
+
+/// Validtor for [`Ipld`] values.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Predicate {
     /// Selector equality check
@@ -125,18 +131,31 @@ impl<'a> Arbitrary<'a> for Predicate {
     }
 }
 
+/// How to constraints unify with (or not) with each other.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Harmonization {
-    Equal,            // e.g. x > 10 vs x > 10
-    Conflict,         // e.g. x == 1 vs x == 2
-    LhsWeaker,        // e.g. x > 10 vs x > 100 (AKA compatible but rhs narrower than lhs)
-    LhsStronger,      // e.g. x > 10 vs x > 1 (AKA compatible lhs narrower than rhs)
-    StrongerTogether, // e.g. x > 10 vs x < 100 (AKA both narrow each other)
-    IncomparablePath, // e.g. .foo and .bar
+    /// Literally equal e.g. `x > 10` and `x > 10`.
+    Equal,
+
+    /// Cannot unify constraints e.g. `x == 1` and `x == 2`.
+    Conflict,
+
+    /// Compatable where LHS is narrower than RHS e.g. `x > 10` vs `x > 100`
+    LhsWeaker,
+
+    /// Compatible where RHS is narrower than LHS e.g. `x > 100` vs `x > 10`
+    LhsStronger,
+
+    /// Together they narrow scope e.g. `x > 10` and `x < 100`
+    StrongerTogether,
+
+    /// Incomparable path e.g. `.foo` and `.bar`
+    IncomparablePath,
 }
 
 impl Harmonization {
+    /// Complement of the harmonization
     pub fn complement(self) -> Self {
         match self {
             Harmonization::Equal => Harmonization::Conflict,
@@ -148,6 +167,7 @@ impl Harmonization {
         }
     }
 
+    /// Flip the LHS and RHS
     pub fn flip(self) -> Self {
         match self {
             Harmonization::Equal => Harmonization::Equal,
@@ -162,6 +182,7 @@ impl Harmonization {
 
 impl Predicate {
     // FIXME make &self?
+    /// Run the predicate against concrete data.
     pub fn run(self, data: &Ipld) -> Result<bool, SelectorError> {
         Ok(match self {
             Predicate::Equal(lhs, rhs_data) => lhs.get(data)? == rhs_data,
@@ -191,6 +212,7 @@ impl Predicate {
     }
 
     // FIXME check paths are subsets, becase that changes some of these
+    /// Attempt to unify two selectors.
     pub fn harmonize(
         &self,
         other: &Self,
@@ -920,32 +942,42 @@ impl TryFrom<Ipld> for Predicate {
     }
 }
 
+/// Error converting from [`Ipld`].
 #[derive(Debug, PartialEq, Error)]
 pub enum FromIpldError {
+    /// Invalid [`Ipld`] selector.
     #[error("Invalid Ipld selector {0:?}")]
     InvalidIpldSelector(<Select<Ipld> as FromStr>::Err),
 
+    /// Invalid [`Number`] selector.
     #[error("Invalid Number selector {0:?}")]
     InvalidNumberSelector(<Select<Number> as FromStr>::Err),
 
+    /// Invalid Collection selector.
     #[error("Invalid Collection selector {0:?}")]
     InvalidCollectionSelector(<Select<Collection> as FromStr>::Err),
 
+    /// Invalid String selector.
     #[error("Invalid String selector {0:?}")]
     InvalidStringSelector(<Select<Collection> as FromStr>::Err),
 
+    /// Cannot parse [`Number`].
     #[error("Cannot parse Number {0:?}")]
     CannotParseIpldNumber(<Number as TryFrom<Ipld>>::Error),
 
+    /// Not a string.
     #[error("Not a string: {0:?}")]
     NotAString(Ipld),
 
+    /// Unrecognized triple tag.
     #[error("Unrecognized triple tag {0}")]
     UnrecognizedTripleTag(String),
 
+    /// Unrecognized shape.
     #[error("Unrecognized shape")]
     UnrecognizedShape,
 
+    /// Not a tuple.
     #[error("Not a predicate tuple {0:?}")]
     NotATuple(Ipld),
 }

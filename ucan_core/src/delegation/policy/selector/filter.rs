@@ -1,3 +1,5 @@
+//! jq-inspired filters.
+
 use super::error::ParseError;
 use nom::{
     self,
@@ -16,15 +18,24 @@ use std::{fmt, str::FromStr};
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
 
+/// Filter variants.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Filter {
-    ArrayIndex(i32),  // [2]
-    Field(String),    // ["key"] (or .key)
-    Values,           // .[]
-    Try(Box<Filter>), // ?
+    /// Extract an array index (e.g. `[2]`).
+    ArrayIndex(i32),
+
+    /// Extract a field from a map (e.g. `["key"]` or `.key`).
+    Field(String),
+
+    /// Extract values from a collection (e.g. `.[]`).
+    Values,
+
+    /// Try-filter (i.e. `?`).
+    Try(Box<Filter>),
 }
 
 impl Filter {
+    /// Checks if the filter is a try-filter.
     pub fn is_in(&self, other: &Self) -> bool {
         match (self, other) {
             (Filter::ArrayIndex(a), Filter::ArrayIndex(b)) => a == b,
@@ -37,6 +48,7 @@ impl Filter {
         }
     }
 
+    /// Checks if the filter is a dot field.
     pub fn is_dot_field(&self) -> bool {
         match self {
             Filter::Field(k) => {
@@ -69,11 +81,13 @@ impl fmt::Display for Filter {
     }
 }
 
+/// Parse a filter from a string.
 pub fn parse(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_try, parse_non_try));
     context("selector_op", p).parse(input)
 }
 
+/// Parse a try-filter (`?`).
 pub fn parse_try(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         terminated(parse_non_try, many1(tag("?"))),
@@ -83,6 +97,7 @@ pub fn parse_try(input: &str) -> IResult<&str, Filter> {
     context("try", p).parse(input)
 }
 
+/// Parses a filter that is a dot field followed by `?`, e.g. `.foo?`.
 pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         terminated(parse_dot_field, many1(tag("?"))),
@@ -92,11 +107,13 @@ pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
     context("try", p).parse(input)
 }
 
+/// Parses a filter not ending in `?`, e.g. `["foo"]`, `.foo`, or `[2]`.
 pub fn parse_non_try(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_values, parse_field, parse_array_index));
     context("non_try", p).parse(input)
 }
 
+/// Parses an array index, e.g. `[2]` or `[-42]`.
 pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
     let num = nom::combinator::recognize(preceded(nom::combinator::opt(tag("-")), digit1));
 
@@ -108,18 +125,21 @@ pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
     context("array_index", array_index).parse(input)
 }
 
+/// Parses values from a collection.
 pub fn parse_values(input: &str) -> IResult<&str, Filter> {
     context("values", tag("[]"))
         .parse(input)
         .map(|(rest, _)| (rest, Filter::Values))
 }
 
+/// Parses a field that is either a dot field or a delimited field, e.g. `["foo"]` or `.foo`.
 pub fn parse_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_delim_field, parse_dot_field));
 
     context("map_field", p).parse(input)
 }
 
+/// Parses a field that starts with `.`, e.g. `.foo` or `._foo`.
 pub fn parse_dot_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_dot_alpha_field, parse_dot_underscore_field));
     context("dot_field", p).parse(input)
@@ -147,10 +167,12 @@ fn dot_starter(input: &str) -> IResult<&str, &str> {
     )))
 }
 
+/// Checks if a character is allowed in a dot field.
 fn is_allowed_in_dot_field(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// Parses an alphabetic field that starts with `.`, e.g. `.foo`.
 pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         preceded(
@@ -169,6 +191,7 @@ pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
     context("dot_field", p).parse(input)
 }
 
+/// Parses a field that starts with `._`, e.g. `._foo`.
 pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(preceded(tag("._"), alphanumeric1), |found: &str| {
         let key = format!("{}{}", '_', found);
@@ -178,6 +201,7 @@ pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
     context("dot_field", p).parse(input)
 }
 
+/// Parses a field that is empty quotes, e.g. `[""]`.
 pub fn parse_empty_quotes_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(tag("[\"\"]"), |_: &str| {
         Ok::<Filter, ()>(Filter::Field("".to_string()))
@@ -186,6 +210,7 @@ pub fn parse_empty_quotes_field(input: &str) -> IResult<&str, Filter> {
     context("empty_quotes_field", p).parse(input)
 }
 
+/// Parses a string that is either a unicode character or a space.
 pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
     #[derive(Copy, Clone, PartialEq, Debug)]
     enum Status {
@@ -238,6 +263,7 @@ pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
     }
 }
 
+/// Parses a delimited field, e.g. ["foo"] or ["foo bar"]
 pub fn parse_delim_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         delimited(tag(r#"[""#), unicode_or_space, tag(r#""]"#)),
@@ -273,18 +299,29 @@ impl<'de> Deserialize<'de> for Filter {
 #[cfg(any(test, feature = "test_utils"))]
 impl<'a> Arbitrary<'a> for Filter {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        todo!("FIXME port from old proptest")
+        enum Pick {
+            ArrayIndex,
+            Field,
+            Values,
+            Try,
+        }
+
+        match u.choose(&[Pick::ArrayIndex, Pick::Field, Pick::Values, Pick::Try])? {
+            Pick::ArrayIndex => {
+                let i = u.int_in_range(0..=99)?;
+                Ok(Filter::ArrayIndex(i))
+            }
+            Pick::Field => {
+                let s = u.arbitrary::<String>()?;
+                Ok(Filter::Field(s))
+            }
+            Pick::Values => Ok(Filter::Values),
+            Pick::Try => {
+                let inner = Filter::arbitrary(u)?;
+                Ok(Filter::Try(Box::new(inner)))
+            }
+        }
     }
-    // fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
-    //     prop_oneof![
-    //         i32::arbitrary().prop_map(|i| Filter::ArrayIndex(i)),
-    //         "[a-zA-Z_ ]*".prop_map(Filter::Field),
-    //         "[a-zA-Z_][a-zA-Z0-9_]*".prop_map(Filter::Field),
-    //         Just(Filter::Values),
-    //         // FIXME prop_recursive::lazy(|_| { Filter::arbitrary_with(()).prop_map(Filter::Try) }),
-    //     ]
-    //     .boxed()
-    // }
 }
 
 #[cfg(test)]

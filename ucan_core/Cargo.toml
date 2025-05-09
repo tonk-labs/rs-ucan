@@ -16,6 +16,8 @@ ipld-core.workspace = true
 nom-unicode.workspace = true
 nom.workspace = true
 nonempty.workspace = true
+proptest = { workspace = true, optional = true }
+proptest-arbitrary-interop = { workspace = true, optional = true }
 serde.workspace = true
 signature.workspace = true
 thiserror.workspace = true
@@ -27,4 +29,6 @@ test-log.workspace = true
 testresult.workspace = true
 
 [features]
-test_utils = ["dep:arbitrary"]
+test_utils = ["arb", "property_test"]
+arb = ["dep:arbitrary"]
+property_test = ["dep:proptest", "dep:proptest-arbitrary-interop"]

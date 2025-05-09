@@ -1,6 +1,7 @@
-pub mod filter;
+//! Extract values from a data structure.
 
 pub mod error;
+pub mod filter;
 pub mod select;
 pub mod selectable;
 
@@ -19,15 +20,18 @@ use thiserror::Error;
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::Arbitrary;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+/// Selector for extracting values from a data structure.
+#[derive(Debug, Default, Clone, PartialEq)]
 #[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub struct Selector(pub Vec<Filter>);
 
 impl Selector {
+    /// Create a new, empty selector.
     pub fn new() -> Self {
         Selector(vec![])
     }
 
+    /// Check if two selectors are related,
     pub fn is_related(&self, other: &Selector) -> bool {
         self.0.iter().zip(other.0.iter()).all(|(a, b)| a == b)
     }
@@ -107,14 +111,19 @@ impl<'de> Deserialize<'de> for Selector {
     }
 }
 
+/// Selector error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Error)]
 #[error("Selector {selector} encountered runtime error: {reason}")]
 pub struct SelectorError {
+    /// The selector that caused the error.
     pub selector: Selector,
+
+    /// The reason for the error.
     pub reason: SelectorErrorReason,
 }
 
 impl SelectorError {
+    /// Create a new selector error.
     pub fn from_refs(path_refs: &Vec<&Filter>, reason: SelectorErrorReason) -> SelectorError {
         SelectorError {
             selector: Selector(path_refs.iter().map(|op| (*op).clone()).collect()),
