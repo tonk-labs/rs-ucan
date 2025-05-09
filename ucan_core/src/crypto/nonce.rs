@@ -63,6 +63,10 @@ impl Nonce {
     ///
     /// * `salt` - A salt. This may be left empty, but is recommended to avoid collision.
     ///
+    /// # Errors
+    ///
+    /// If the random number generator fails, an error is returned.
+    ///
     /// # Example
     ///
     /// ```rust
@@ -94,7 +98,7 @@ impl fmt::Display for Nonce {
 
         nonce_bytes
             .iter()
-            .try_fold((), |_, byte| write!(f, "{:02x}", byte))
+            .try_fold((), |(), byte| write!(f, "{byte:02x}"))
     }
 }
 
@@ -110,6 +114,7 @@ impl From<Nonce> for Ipld {
 impl TryFrom<Ipld> for Nonce {
     type Error = (); // FIXME
 
+    #[allow(clippy::expect_used)]
     fn try_from(ipld: Ipld) -> Result<Self, Self::Error> {
         if let Ipld::Bytes(v) = ipld {
             match v.len() {

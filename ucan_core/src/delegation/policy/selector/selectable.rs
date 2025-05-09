@@ -8,6 +8,11 @@ use std::collections::BTreeMap;
 /// A trait for types that can be selected from [`Ipld`]
 pub trait Selectable: Sized {
     /// Attempt to select on some [`Ipld`].
+    ///
+    /// # Errors
+    ///
+    /// If the [`Ipld`] is not of the expected shape,
+    /// [`SelectErrorReason`] is returned.
     fn try_select(ipld: Ipld) -> Result<Self, SelectorErrorReason>;
 }
 

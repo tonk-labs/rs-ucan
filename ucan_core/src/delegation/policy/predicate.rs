@@ -156,7 +156,8 @@ pub enum Harmonization {
 
 impl Harmonization {
     /// Complement of the harmonization
-    pub fn complement(self) -> Self {
+    #[must_use]
+    pub const fn complement(self) -> Self {
         match self {
             Harmonization::Equal => Harmonization::Conflict,
             Harmonization::Conflict => Harmonization::Equal, // FIXME Correct?
@@ -168,7 +169,8 @@ impl Harmonization {
     }
 
     /// Flip the LHS and RHS
-    pub fn flip(self) -> Self {
+    #[must_use]
+    pub const fn flip(self) -> Self {
         match self {
             Harmonization::Equal => Harmonization::Equal,
             Harmonization::Conflict => Harmonization::Conflict,
@@ -183,6 +185,11 @@ impl Harmonization {
 impl Predicate {
     // FIXME make &self?
     /// Run the predicate against concrete data.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SelectorError`] if the predicate *cannot* be evaluated against the data
+    /// due to things like shape errors.
     pub fn run(self, data: &Ipld) -> Result<bool, SelectorError> {
         Ok(match self {
             Predicate::Equal(lhs, rhs_data) => lhs.get(data)? == rhs_data,
@@ -194,25 +201,29 @@ impl Predicate {
             Predicate::Not(inner) => !inner.run(data)?,
             Predicate::And(lhs, rhs) => lhs.run(data)? && rhs.run(data)?,
             Predicate::Or(lhs, rhs) => lhs.run(data)? || rhs.run(data)?,
-            Predicate::Every(xs, p) => xs
-                .get(data)?
-                .to_vec()
-                .iter()
-                .try_fold(true, |acc, each_datum| {
-                    Ok(acc && p.clone().run(&each_datum)?)
-                })?,
+            Predicate::Every(xs, p) => {
+                xs.get(data)?
+                    .to_vec()
+                    .iter()
+                    .try_fold(
+                        true,
+                        |acc, each_datum| Ok(acc && p.clone().run(each_datum)?),
+                    )?
+            }
             Predicate::Some(xs, p) => xs
                 .get(data)?
                 .to_vec()
                 .iter()
                 .try_fold(false, |acc, each_datum| {
-                    Ok(acc || p.clone().run(&each_datum)?)
+                    Ok(acc || p.clone().run(each_datum)?)
                 })?,
         })
     }
 
     // FIXME check paths are subsets, becase that changes some of these
     /// Attempt to unify two selectors.
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn harmonize(
         &self,
         other: &Self,
@@ -395,25 +406,8 @@ impl Predicate {
             }
             (
                 Predicate::GreaterThan(lhs_selector, lhs_num),
-                Predicate::LessThan(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num > rhs_num {
-                            Harmonization::StrongerTogether
-                        } else {
-                            Harmonization::Conflict
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-            (
-                Predicate::GreaterThan(lhs_selector, lhs_num),
-                Predicate::LessThanOrEqual(rhs_selector, rhs_num),
+                Predicate::LessThan(rhs_selector, rhs_num)
+                | Predicate::LessThanOrEqual(rhs_selector, rhs_num),
             ) => {
                 if lhs_selector.is_related(rhs_selector) {
                     if lhs_selector == rhs_selector {
@@ -779,14 +773,15 @@ impl Predicate {
 }
 
 /// Check if a string matches a glob pattern
+#[must_use]
 pub fn glob(input: &str, pattern: &str) -> bool {
     if pattern.is_empty() {
-        return input == "";
+        return input.is_empty();
     }
 
     // Parsing pattern
     let (saw_escape, mut patterns, mut working) = pattern.chars().fold(
-        (false, vec![], "".to_string()),
+        (false, vec![], String::new()),
         |(saw_escape, mut acc, mut working), c| {
             match c {
                 '*' => {
@@ -830,9 +825,9 @@ pub fn glob(input: &str, pattern: &str) -> bool {
         .enumerate()
         .try_fold(input, |acc, (idx, pattern_frag)| {
             if let Some((pre, post)) = acc.split_once(pattern_frag) {
-                if idx == 0 && !pattern.starts_with("*") && !pre.is_empty() {
+                if idx == 0 && !pattern.starts_with('*') && !pre.is_empty() {
                     Err(())
-                } else if idx == patterns.len() - 1 && !pattern.ends_with("*") && !post.is_empty() {
+                } else if idx == patterns.len() - 1 && !pattern.ends_with('*') && !post.is_empty() {
                     Err(())
                 } else {
                     Ok(post)
@@ -986,7 +981,7 @@ impl From<Predicate> for Ipld {
     fn from(p: Predicate) -> Self {
         match p {
             Predicate::Equal(lhs, rhs) => {
-                Ipld::List(vec![Ipld::String("==".to_string()), lhs.into(), rhs.into()])
+                Ipld::List(vec![Ipld::String("==".to_string()), lhs.into(), rhs])
             }
             Predicate::GreaterThan(lhs, rhs) => {
                 Ipld::List(vec![Ipld::String(">".to_string()), lhs.into(), rhs.into()])

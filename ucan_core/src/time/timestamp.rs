@@ -1,6 +1,6 @@
 //! A JavaScript-wrapper for [`Timestamp`][crate::time::Timestamp].
 
-use super::error::OutOfRangeError;
+use super::error::{NumberIsNotATimestamp, OutOfRangeError};
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -40,7 +40,7 @@ impl Timestamp {
             .duration_since(UNIX_EPOCH)
             .map_err(|_| OutOfRangeError { tried: time })?
             .as_secs()
-            > 0x1FFFFFFFFFFFFF
+            > 0x001F_FFFF_FFFF_FFFF
         {
             Err(OutOfRangeError { tried: time })
         } else {
@@ -49,18 +49,36 @@ impl Timestamp {
     }
 
     /// Get the current time in seconds since [`UNIX_EPOCH`] as a [`Timestamp`].
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the current time is before the Unix epoch.
+    #[must_use]
+    #[allow(clippy::expect_used)]
     pub fn now() -> Timestamp {
         Self::new(SystemTime::now())
             .expect("the current time to be somtime in the 3rd millenium CE")
     }
 
     /// Get a timestamp 5 minutes from now.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the current time is before the Unix epoch.
+    #[must_use]
+    #[allow(clippy::expect_used)]
     pub fn five_minutes_from_now() -> Timestamp {
         Self::new(SystemTime::now() + Duration::from_secs(5 * 60))
             .expect("the current time to be somtime in the 3rd millenium CE")
     }
 
     /// Get a timestamp 5 hours from now.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the current time is before the Unix epoch.
+    #[must_use]
+    #[allow(clippy::expect_used)]
     pub fn five_years_from_now() -> Timestamp {
         Self::new(SystemTime::now() + Duration::from_secs(5 * 365 * 24 * 60 * 60))
             .expect("the current time to be somtime in the 3rd millenium CE")
@@ -69,6 +87,12 @@ impl Timestamp {
     /// Convert a [`Timestamp`] to a [Unix timestamp].
     ///
     /// [Unix timestamp]: https://en.wikipedia.org/wiki/Unix_time
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the [`SystemTime`] is before the Unix epoch.
+    #[must_use]
+    #[allow(clippy::expect_used)]
     pub fn to_unix(&self) -> u64 {
         self.0
             .duration_since(UNIX_EPOCH)
@@ -78,7 +102,7 @@ impl Timestamp {
 
     /// An intentionally permissive variant of `new` for
     /// deseriazation. See the note on the struct.
-    pub(crate) fn postel(time: SystemTime) -> Self {
+    pub(crate) const fn postel(time: SystemTime) -> Self {
         Timestamp(time)
     }
 }
@@ -126,15 +150,12 @@ impl From<Timestamp> for Ipld {
 }
 
 impl TryFrom<Ipld> for Timestamp {
-    type Error = ();
+    type Error = (); // FIXME
 
     fn try_from(ipld: Ipld) -> Result<Self, Self::Error> {
         match ipld {
             // FIXME do bounds checking
-            Ipld::Integer(secs) => Ok(Timestamp::new(
-                UNIX_EPOCH + Duration::from_secs(secs as u64),
-            )
-            .map_err(|_| ())?),
+            Ipld::Integer(secs) => secs.try_into().map_err(|_| ()),
             _ => Err(()),
         }
     }
@@ -142,16 +163,20 @@ impl TryFrom<Ipld> for Timestamp {
 
 impl From<Timestamp> for i128 {
     fn from(timestamp: Timestamp) -> i128 {
-        timestamp.to_unix() as i128
+        i128::from(timestamp.to_unix())
     }
 }
 
 impl TryFrom<i128> for Timestamp {
-    type Error = OutOfRangeError;
+    type Error = NumberIsNotATimestamp;
 
     fn try_from(secs: i128) -> Result<Self, Self::Error> {
-        // FIXME do bounds checking
-        Timestamp::new(UNIX_EPOCH + Duration::from_secs(secs as u64))
+        Ok(Timestamp::new(
+            UNIX_EPOCH
+                + Duration::from_secs(
+                    u64::try_from(secs).map_err(|_| NumberIsNotATimestamp::TriedIpldInt(secs))?,
+                ),
+        )?)
     }
 }
 

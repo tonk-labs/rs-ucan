@@ -22,6 +22,7 @@ pub enum Collection {
 
 impl Collection {
     /// Returns the array elements or map values.
+    #[must_use]
     pub fn to_vec(&self) -> Vec<&Ipld> {
         self.into()
     }
@@ -82,12 +83,8 @@ impl From<HashMap<String, Ipld>> for Collection {
 impl From<Collection> for Ipld {
     fn from(collection: Collection) -> Self {
         match collection {
-            Collection::Array(xs) => Ipld::List(xs.into_iter().map(Into::into).collect()),
-            Collection::Map(xs) => Ipld::Map(
-                xs.into_iter()
-                    .map(|(k, v)| (k, v.into()))
-                    .collect::<BTreeMap<String, Ipld>>(),
-            ),
+            Collection::Array(xs) => Ipld::List(xs),
+            Collection::Map(xs) => Ipld::Map(xs),
         }
     }
 }

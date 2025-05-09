@@ -5,7 +5,6 @@
     clippy::dbg_macro,
     clippy::expect_used,
     clippy::missing_const_for_fn,
-    clippy::module_name_repetitions,
     clippy::panic,
     clippy::todo,
     clippy::unwrap_used,

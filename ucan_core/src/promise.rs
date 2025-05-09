@@ -80,10 +80,10 @@ impl TryFrom<&Promised> for Ipld {
             Promised::Float(f) => Ok(Ipld::Float(*f)),
             Promised::String(s) => Ok(Ipld::String(s.clone())),
             Promised::Bytes(b) => Ok(Ipld::Bytes(b.clone())),
-            Promised::Link(c) => Ok(Ipld::Link(c.clone())),
-            Promised::WaitOk(c) => Err(WaitingOn::WaitOk(c.clone())),
-            Promised::WaitErr(c) => Err(WaitingOn::WaitErr(c.clone())),
-            Promised::WaitAny(c) => Err(WaitingOn::WaitAny(c.clone())),
+            Promised::Link(c) => Ok(Ipld::Link(*c)),
+            Promised::WaitOk(c) => Err(WaitingOn::WaitOk(*c)),
+            Promised::WaitErr(c) => Err(WaitingOn::WaitErr(*c)),
+            Promised::WaitAny(c) => Err(WaitingOn::WaitAny(*c)),
             Promised::List(l) => {
                 let mut resolved = Vec::new();
                 for item in l {

@@ -11,6 +11,18 @@ pub struct OutOfRangeError {
     pub tried: SystemTime,
 }
 
+/// An error expressing when a time is larger than 2⁵³ seconds past the Unix epoch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum NumberIsNotATimestamp {
+    /// The [`Ipld`] number that is outside of the [`JsTime`] range.
+    #[error("Cannot convert IPLD number to JsTime (2⁵³) range: {0}")]
+    TriedIpldInt(i128),
+
+    /// A [`SystemTime`] is outside of the [`JsTime`] range.
+    #[error(transparent)]
+    TriedSystemTime(#[from] OutOfRangeError),
+}
+
 /// An error expressing when a time is not within the bounds of a UCAN.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Error)]
 pub enum TimeBoundError {

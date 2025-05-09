@@ -14,7 +14,7 @@ pub struct Unset;
 
 // FIXME move
 mod sealed {
-    use super::*;
+    use super::{DelegatedSubject, Did, Unset};
 
     pub trait DidOrUnset {}
     impl DidOrUnset for Unset {}
@@ -74,7 +74,8 @@ pub struct DelegationBuilder<
 
 impl<D: Did> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
     /// Creates a blank [`DelegationBuilder`] instance.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             issuer: Unset,
             audience: Unset,
@@ -99,6 +100,7 @@ impl<
     > DelegationBuilder<D, Issuer, Audience, Subject, Command>
 {
     /// Sets the `issuer` field of the delegation.
+    #[must_use]
     pub fn issuer(self, issuer: D) -> DelegationBuilder<D, D, Audience, Subject, Command> {
         DelegationBuilder {
             issuer,
@@ -115,6 +117,7 @@ impl<
     }
 
     /// Sets the `audience` field of the delegation.
+    #[must_use]
     pub fn audience(self, audience: D) -> DelegationBuilder<D, Issuer, D, Subject, Command> {
         DelegationBuilder {
             issuer: self.issuer,
@@ -131,6 +134,7 @@ impl<
     }
 
     /// Sets the `subject` field of the delegation.
+    #[must_use]
     pub fn subject(
         self,
         subject: DelegatedSubject<D>,
@@ -150,6 +154,7 @@ impl<
     }
 
     /// Sets the `command` field of the delegation.
+    #[must_use]
     pub fn command(
         self,
         command: Vec<String>,
@@ -169,6 +174,7 @@ impl<
     }
 
     /// Sets the `policy` field of the delegation.
+    #[must_use]
     pub fn policy(
         self,
         policy: Vec<Predicate>,
@@ -188,6 +194,7 @@ impl<
     }
 
     /// Sets the `expiration` field of the delegation.
+    #[must_use]
     pub fn expiration(
         self,
         expiration: Timestamp,
@@ -207,6 +214,7 @@ impl<
     }
 
     /// Sets the `not_before` field of the delegation.
+    #[must_use]
     pub fn not_before(
         self,
         not_before: Timestamp,
@@ -226,6 +234,7 @@ impl<
     }
 
     /// Sets the `meta` field of the delegation.
+    #[must_use]
     pub fn meta(
         self,
         meta: BTreeMap<String, Ipld>,
@@ -245,6 +254,7 @@ impl<
     }
 
     /// Sets the `nonce` field of the delegation.
+    #[must_use]
     pub fn nonce(self, nonce: Nonce) -> DelegationBuilder<D, Issuer, Audience, Subject, Command> {
         DelegationBuilder {
             issuer: self.issuer,
@@ -261,10 +271,18 @@ impl<
     }
 }
 
+#[allow(clippy::mismatching_type_param_order)]
 impl<D: Did> DelegationBuilder<D, D, D, DelegatedSubject<D>, Vec<String>> {
     /// Builds the [`Delegation`] instance from the builder.
     ///
     /// This is typesafe, and only possible to call when all required fields are set.
+    ///
+    /// # Panics
+    ///
+    /// Panics if random number generator fails when generating a nonce.
+    /// This will never happen if a nonce is provided, and is not recoverable
+    /// becuase a broken RNG is a serious problem.
+    #[allow(clippy::expect_used)]
     pub fn build(self) -> super::Delegation<D> {
         super::Delegation {
             issuer: self.issuer,

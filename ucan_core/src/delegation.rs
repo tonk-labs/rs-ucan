@@ -34,52 +34,53 @@ pub struct Delegation<D: Did> {
 
 impl<D: Did> Delegation<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
-    pub fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
+    #[must_use]
+    pub const fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
         DelegationBuilder::new()
     }
 
-    /// Getter for the issuer field.
-    pub fn issuer(&self) -> &D {
+    /// Getter for the `issuer` field.
+    pub const fn issuer(&self) -> &D {
         &self.issuer
     }
 
-    /// Getter for the audience field.
-    pub fn audience(&self) -> &D {
+    /// Getter for the `audience` field.
+    pub const fn audience(&self) -> &D {
         &self.audience
     }
 
-    /// Getter for the subject field.
-    pub fn subject(&self) -> &DelegatedSubject<D> {
+    /// Getter for the `subject` field.
+    pub const fn subject(&self) -> &DelegatedSubject<D> {
         &self.subject
     }
 
-    /// Getter for the command field.
-    pub fn command(&self) -> &[String] {
+    /// Getter for the `command` field.
+    pub const fn command(&self) -> &Vec<String> {
         &self.command
     }
 
-    /// Getter for the policy field.
-    pub fn policy(&self) -> &[Predicate] {
+    /// Getter for the `policy` field.
+    pub const fn policy(&self) -> &Vec<Predicate> {
         &self.policy
     }
 
-    /// Getter for the expiration field.
-    pub fn expiration(&self) -> Option<&Timestamp> {
-        self.expiration.as_ref()
+    /// Getter for the `expiration` field.
+    pub const fn expiration(&self) -> Option<Timestamp> {
+        self.expiration
     }
 
-    /// Getter for the not_before field.
-    pub fn not_before(&self) -> Option<&Timestamp> {
-        self.not_before.as_ref()
+    /// Getter for the `not_before` field.
+    pub const fn not_before(&self) -> Option<Timestamp> {
+        self.not_before
     }
 
-    /// Getter for the meta field.
-    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+    /// Getter for the `meta` field.
+    pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
         &self.meta
     }
 
-    /// Getter for the nonce.
-    pub fn nonce(&self) -> &Nonce {
+    /// Getter for the `nonce` field.
+    pub const fn nonce(&self) -> &Nonce {
         &self.nonce
     }
 }

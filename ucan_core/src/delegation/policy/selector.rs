@@ -27,11 +27,13 @@ pub struct Selector(pub Vec<Filter>);
 
 impl Selector {
     /// Create a new, empty selector.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Selector(vec![])
     }
 
     /// Check if two selectors are related,
+    #[must_use]
     pub fn is_related(&self, other: &Selector) -> bool {
         self.0.iter().zip(other.0.iter()).all(|(a, b)| a == b)
     }
@@ -46,7 +48,7 @@ impl fmt::Display for Selector {
                 write!(f, ".")?;
             }
 
-            write!(f, "{}", field)?;
+            write!(f, "{field}")?;
         } else {
             write!(f, ".")?;
         }
@@ -63,7 +65,7 @@ impl FromStr for Selector {
     type Err = nom::Err<ParseError>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if !s.starts_with(".") {
+        if !s.starts_with('.') {
             return Err(nom::Err::Error(ParseError::MissingStartingDot(
                 s.to_string(),
             )));
@@ -124,6 +126,7 @@ pub struct SelectorError {
 
 impl SelectorError {
     /// Create a new selector error.
+    #[must_use]
     pub fn from_refs(path_refs: &Vec<&Filter>, reason: SelectorErrorReason) -> SelectorError {
         SelectorError {
             selector: Selector(path_refs.iter().map(|op| (*op).clone()).collect()),

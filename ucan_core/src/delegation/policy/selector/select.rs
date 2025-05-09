@@ -32,7 +32,8 @@ impl<T> PartialEq for Select<T> {
 
 impl<T> Select<T> {
     /// Creates a new `Select` instance with the given filters.
-    pub fn new(filters: Vec<Filter>) -> Self {
+    #[must_use]
+    pub const fn new(filters: Vec<Filter>) -> Self {
         Self {
             filters,
             _marker: std::marker::PhantomData,
@@ -40,6 +41,7 @@ impl<T> Select<T> {
     }
 
     /// Checks if two selectors are related.
+    #[must_use]
     pub fn is_related<U: Clone>(&self, other: &Select<U>) -> bool
     where
         Ipld: From<T> + From<U>,
@@ -68,7 +70,7 @@ impl<T: Selectable> Select<T> {
                         let result = {
                             match ipld {
                                 Ipld::List(xs) => {
-                                    if i.abs() as usize > xs.len() {
+                                    if i.unsigned_abs() as usize > xs.len() {
                                         return Err((
                                             is_try,
                                             SelectorError::from_refs(
@@ -76,7 +78,7 @@ impl<T: Selectable> Select<T> {
                                                 SelectorErrorReason::IndexOutOfBounds,
                                             ),
                                         ));
-                                    };
+                                    }
 
                                     xs.get((xs.len() as i32 + *i) as usize)
                                         .ok_or((
@@ -144,7 +146,7 @@ impl<T: Selectable> Select<T> {
             Ok((ipld, seen_ops, _)) => Ok((ipld, seen_ops)),
             Err((is_try, ref e @ SelectorError { ref selector, .. })) => {
                 if is_try {
-                    Ok((Ipld::Null, selector.0.iter().map(|x| x).collect::<Vec<_>>()))
+                    Ok((Ipld::Null, selector.0.iter().collect::<Vec<_>>()))
                 } else {
                     Err(e.clone())
                 }

@@ -36,6 +36,7 @@ pub enum Filter {
 
 impl Filter {
     /// Checks if the filter is a try-filter.
+    #[must_use]
     pub fn is_in(&self, other: &Self) -> bool {
         match (self, other) {
             (Filter::ArrayIndex(a), Filter::ArrayIndex(b)) => a == b,
@@ -49,6 +50,7 @@ impl Filter {
     }
 
     /// Checks if the filter is a dot field.
+    #[must_use]
     pub fn is_dot_field(&self) -> bool {
         match self {
             Filter::Field(k) => {
@@ -67,27 +69,35 @@ impl Filter {
 impl fmt::Display for Filter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Filter::ArrayIndex(i) => write!(f, "[{}]", i),
+            Filter::ArrayIndex(i) => write!(f, "[{i}]"),
             Filter::Field(k) => {
                 if self.is_dot_field() {
-                    write!(f, ".{}", k)
+                    write!(f, ".{k}")
                 } else {
-                    write!(f, "[\"{}\"]", k)
+                    write!(f, "[\"{k}\"]")
                 }
             }
             Filter::Values => write!(f, "[]"),
-            Filter::Try(inner) => write!(f, "{}?", inner),
+            Filter::Try(inner) => write!(f, "{inner}?"),
         }
     }
 }
 
 /// Parse a filter from a string.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_try, parse_non_try));
     context("selector_op", p).parse(input)
 }
 
 /// Parse a try-filter (`?`).
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_try(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         terminated(parse_non_try, many1(tag("?"))),
@@ -98,6 +108,10 @@ pub fn parse_try(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a filter that is a dot field followed by `?`, e.g. `.foo?`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         terminated(parse_dot_field, many1(tag("?"))),
@@ -108,12 +122,20 @@ pub fn parse_try_dot_field(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a filter not ending in `?`, e.g. `["foo"]`, `.foo`, or `[2]`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_non_try(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_values, parse_field, parse_array_index));
     context("non_try", p).parse(input)
 }
 
 /// Parses an array index, e.g. `[2]` or `[-42]`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
     let num = nom::combinator::recognize(preceded(nom::combinator::opt(tag("-")), digit1));
 
@@ -126,6 +148,10 @@ pub fn parse_array_index(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses values from a collection.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_values(input: &str) -> IResult<&str, Filter> {
     context("values", tag("[]"))
         .parse(input)
@@ -133,6 +159,10 @@ pub fn parse_values(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a field that is either a dot field or a delimited field, e.g. `["foo"]` or `.foo`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_delim_field, parse_dot_field));
 
@@ -140,6 +170,10 @@ pub fn parse_field(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a field that starts with `.`, e.g. `.foo` or `._foo`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_dot_field(input: &str) -> IResult<&str, Filter> {
     let p = alt((parse_dot_alpha_field, parse_dot_underscore_field));
     context("dot_field", p).parse(input)
@@ -155,10 +189,8 @@ fn dot_starter(input: &str) -> IResult<&str, &str> {
 
     let bytes = input.as_bytes();
 
-    if bytes[0] == b'.' {
-        if char::from(bytes[1]).is_alphabetic() || bytes[1] == b'_' {
-            return Ok((&input[2..], &input[..2]));
-        }
+    if bytes[0] == b'.' && (char::from(bytes[1]).is_alphabetic() || bytes[1] == b'_') {
+        return Ok((&input[2..], &input[..2]));
     }
 
     Err(nom::Err::Error(nom::error::Error::new(
@@ -173,6 +205,10 @@ fn is_allowed_in_dot_field(c: char) -> bool {
 }
 
 /// Parses an alphabetic field that starts with `.`, e.g. `.foo`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         preceded(
@@ -192,6 +228,10 @@ pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a field that starts with `._`, e.g. `._foo`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(preceded(tag("._"), alphanumeric1), |found: &str| {
         let key = format!("{}{}", '_', found);
@@ -202,15 +242,23 @@ pub fn parse_dot_underscore_field(input: &str) -> IResult<&str, Filter> {
 }
 
 /// Parses a field that is empty quotes, e.g. `[""]`.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_empty_quotes_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(tag("[\"\"]"), |_: &str| {
-        Ok::<Filter, ()>(Filter::Field("".to_string()))
+        Ok::<Filter, ()>(Filter::Field(String::new()))
     });
 
     context("empty_quotes_field", p).parse(input)
 }
 
 /// Parses a string that is either a unicode character or a space.
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
     #[derive(Copy, Clone, PartialEq, Debug)]
     enum Status {
@@ -238,9 +286,9 @@ pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
                 if status == Status::FoundQuote {
                     if c == ']' {
                         return (Status::Done, len + 1);
-                    } else {
-                        return (Status::Looking, len + 1);
                     }
+
+                    return (Status::Looking, len + 1);
                 }
 
                 if c == '"' {
@@ -263,7 +311,11 @@ pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
     }
 }
 
-/// Parses a delimited field, e.g. ["foo"] or ["foo bar"]
+/// Parses a delimited field, e.g. `["foo"]` or `["foo bar"]`
+///
+/// # Errors
+///
+/// Returns a `nom` error if the parser fails to match.
 pub fn parse_delim_field(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         delimited(tag(r#"[""#), unicode_or_space, tag(r#""]"#)),

@@ -1,5 +1,9 @@
 [package]
 name = "ucan_core"
+readme = "README.md"
+keywords = ["auth", "capability", "rpc"]
+categories = ["security", "web-programming"]
+description = "Core UCAN tokens"
 
 authors.workspace = true
 edition.workspace = true
