@@ -1,5 +1,7 @@
 //! [`Ipld`] numerics.
 
+use std::cmp::Ordering;
+
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -25,12 +27,33 @@ pub enum Number {
 }
 
 impl PartialOrd for Number {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Number::Float(a), Number::Float(b)) => a.partial_cmp(b),
             (Number::Integer(a), Number::Integer(b)) => a.partial_cmp(b),
-            (Number::Float(a), Number::Integer(b)) => a.partial_cmp(&(*b as f64)),
-            (Number::Integer(a), Number::Float(b)) => (*a as f64).partial_cmp(b),
+            (Number::Float(a), Number::Integer(b)) => {
+                if *b > (f64::MAX as i128) {
+                    return Some(Ordering::Less);
+                }
+
+                if *b < (f64::MIN as i128) {
+                    return Some(Ordering::Greater);
+                }
+
+                a.partial_cmp(&(*b as f64))
+            }
+            (Number::Integer(a), Number::Float(b)) => {
+                if *a > (f64::MAX as i128) {
+                    return Some(Ordering::Greater);
+                }
+
+                if *a < (f64::MIN as i128) {
+                    return Some(Ordering::Less);
+                }
+
+                (*a as f64).partial_cmp(b)
+            }
         }
     }
 }

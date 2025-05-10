@@ -52,6 +52,11 @@ impl<T> Select<T> {
 
 impl<T: Selectable> Select<T> {
     /// Tries to retrieve the value from the given [`Ipld`] using the selector.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SelectorError`] if the data shape does not conform to the requested path.
+    #[allow(clippy::too_many_lines)]
     pub fn get(self, ctx: &Ipld) -> Result<T, SelectorError> {
         let got = self.filters.iter().try_fold(
             (ctx.clone(), vec![], false),
@@ -70,6 +75,16 @@ impl<T: Selectable> Select<T> {
                         let result = {
                             match ipld {
                                 Ipld::List(xs) => {
+                                    if xs.len() > (i32::MAX as usize) {
+                                        return Err((
+                                            is_try,
+                                            SelectorError::from_refs(
+                                                &seen_ops,
+                                                SelectorErrorReason::IndexOutOfBounds,
+                                            ),
+                                        ));
+                                    }
+
                                     if i.unsigned_abs() as usize > xs.len() {
                                         return Err((
                                             is_try,
@@ -80,7 +95,13 @@ impl<T: Selectable> Select<T> {
                                         ));
                                     }
 
-                                    xs.get((xs.len() as i32 + *i) as usize)
+                                    let idx: usize = if *i <= 0 {
+                                        i.unsigned_abs() as usize
+                                    } else {
+                                        xs.len() - i.unsigned_abs() as usize
+                                    };
+
+                                    xs.get(idx)
                                         .ok_or((
                                             is_try,
                                             SelectorError::from_refs(

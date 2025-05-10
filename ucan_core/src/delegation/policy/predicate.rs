@@ -344,7 +344,7 @@ impl Predicate {
             (Predicate::Equal(lhs_selector, lhs_ipld), Predicate::Like(rhs_selector, rhs_str)) => {
                 if lhs_selector.is_related(rhs_selector) {
                     if let Ipld::String(lhs_str) = &lhs_ipld {
-                        if glob(&lhs_str, rhs_str) {
+                        if glob(lhs_str, rhs_str) {
                             // FIXME?
                             Harmonization::LhsStronger
                         } else {
@@ -369,6 +369,10 @@ impl Predicate {
             (
                 Predicate::GreaterThan(lhs_selector, lhs_num),
                 Predicate::GreaterThan(rhs_selector, rhs_num),
+            )
+            | (
+                Predicate::GreaterThanOrEqual(lhs_selector, lhs_num),
+                Predicate::GreaterThanOrEqual(rhs_selector, rhs_num),
             ) => {
                 if lhs_selector.is_related(rhs_selector) {
                     if lhs_selector == rhs_selector {
@@ -404,10 +408,20 @@ impl Predicate {
                     Harmonization::IncomparablePath
                 }
             }
+
             (
                 Predicate::GreaterThan(lhs_selector, lhs_num),
                 Predicate::LessThan(rhs_selector, rhs_num)
                 | Predicate::LessThanOrEqual(rhs_selector, rhs_num),
+            )
+            | (
+                Predicate::LessThanOrEqual(lhs_selector, lhs_num),
+                Predicate::GreaterThan(rhs_selector, rhs_num),
+            )
+            | (
+                Predicate::LessThan(lhs_selector, lhs_num),
+                Predicate::GreaterThan(rhs_selector, rhs_num)
+                | Predicate::GreaterThanOrEqual(rhs_selector, rhs_num),
             ) => {
                 if lhs_selector.is_related(rhs_selector) {
                     if lhs_selector == rhs_selector {
@@ -427,26 +441,6 @@ impl Predicate {
             /*************************
              * Greater Than Or Equal *
              *************************/
-            (
-                Predicate::GreaterThanOrEqual(lhs_selector, lhs_num),
-                Predicate::GreaterThanOrEqual(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num == rhs_num {
-                            Harmonization::Equal
-                        } else if lhs_num > rhs_num {
-                            Harmonization::LhsStronger
-                        } else {
-                            Harmonization::LhsWeaker
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
             (
                 Predicate::GreaterThanOrEqual(lhs_selector, lhs_num),
                 Predicate::GreaterThan(rhs_selector, rhs_num),
@@ -501,13 +495,14 @@ impl Predicate {
                     Harmonization::IncomparablePath
                 }
             }
-
-            /**********************
-             * Less Than Or Equal *
-             **********************/
             (
                 Predicate::LessThanOrEqual(lhs_selector, lhs_num),
                 Predicate::LessThanOrEqual(rhs_selector, rhs_num),
+            )
+            | (
+                Predicate::LessThan(lhs_selector, lhs_num),
+                Predicate::LessThan(rhs_selector, rhs_num)
+                | Predicate::LessThanOrEqual(rhs_selector, rhs_num),
             ) => {
                 if lhs_selector.is_related(rhs_selector) {
                     if lhs_selector == rhs_selector {
@@ -537,24 +532,6 @@ impl Predicate {
                             Harmonization::LhsStronger
                         } else {
                             Harmonization::LhsWeaker
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-            (
-                Predicate::LessThanOrEqual(lhs_selector, lhs_num),
-                Predicate::GreaterThan(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num > rhs_num {
-                            Harmonization::StrongerTogether
-                        } else {
-                            Harmonization::Conflict
                         }
                     } else {
                         Harmonization::Conflict
@@ -570,86 +547,6 @@ impl Predicate {
                 if lhs_selector.is_related(rhs_selector) {
                     if lhs_selector == rhs_selector {
                         if lhs_num >= rhs_num {
-                            Harmonization::StrongerTogether
-                        } else {
-                            Harmonization::Conflict
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-
-            /*************
-             * Less Than *
-             *************/
-            (
-                Predicate::LessThan(lhs_selector, lhs_num),
-                Predicate::LessThan(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num == rhs_num {
-                            Harmonization::Equal
-                        } else if lhs_num < rhs_num {
-                            Harmonization::LhsStronger
-                        } else {
-                            Harmonization::LhsWeaker
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-            (
-                Predicate::LessThan(lhs_selector, lhs_num),
-                Predicate::LessThanOrEqual(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num == rhs_num {
-                            Harmonization::LhsStronger
-                        } else if lhs_num < rhs_num {
-                            Harmonization::LhsStronger
-                        } else {
-                            Harmonization::LhsWeaker
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-            (
-                Predicate::LessThan(lhs_selector, lhs_num),
-                Predicate::GreaterThan(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num > rhs_num {
-                            Harmonization::StrongerTogether
-                        } else {
-                            Harmonization::Conflict
-                        }
-                    } else {
-                        Harmonization::Conflict
-                    }
-                } else {
-                    Harmonization::IncomparablePath
-                }
-            }
-            (
-                Predicate::LessThan(lhs_selector, lhs_num),
-                Predicate::GreaterThanOrEqual(rhs_selector, rhs_num),
-            ) => {
-                if lhs_selector.is_related(rhs_selector) {
-                    if lhs_selector == rhs_selector {
-                        if lhs_num > rhs_num {
                             Harmonization::StrongerTogether
                         } else {
                             Harmonization::Conflict
@@ -679,10 +576,11 @@ impl Predicate {
                     self.harmonize(&rhs_raw_pred1, lhs_ctx.clone(), rhs_ctx.clone()),
                     self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
                 ) {
-                    (Harmonization::Conflict, _) => Harmonization::Conflict,
-                    (_, Harmonization::Conflict) => Harmonization::Conflict,
-                    (Harmonization::IncomparablePath, right) => right,
-                    (left, Harmonization::IncomparablePath) => left,
+                    (Harmonization::Conflict, _) | (_, Harmonization::Conflict) => {
+                        Harmonization::Conflict
+                    }
+                    (Harmonization::IncomparablePath, rhs) => rhs,
+                    (lhs, Harmonization::IncomparablePath) => lhs,
                     (Harmonization::Equal, rhs) => rhs,
                     (lhs, Harmonization::Equal) => lhs,
                     (Harmonization::LhsWeaker, Harmonization::LhsWeaker) => {
@@ -691,14 +589,10 @@ impl Predicate {
                     (Harmonization::LhsStronger, Harmonization::LhsStronger) => {
                         Harmonization::LhsStronger
                     }
-                    (Harmonization::LhsStronger, Harmonization::LhsWeaker) => {
-                        Harmonization::StrongerTogether
-                    }
-                    (Harmonization::LhsWeaker, Harmonization::LhsStronger) => {
-                        Harmonization::StrongerTogether
-                    }
-                    (Harmonization::StrongerTogether, _) => Harmonization::StrongerTogether,
-                    (_, Harmonization::StrongerTogether) => Harmonization::StrongerTogether,
+                    (Harmonization::LhsStronger, Harmonization::LhsWeaker)
+                    | (Harmonization::LhsWeaker, Harmonization::LhsStronger)
+                    | (Harmonization::StrongerTogether, _)
+                    | (_, Harmonization::StrongerTogether) => Harmonization::StrongerTogether,
                 }
             }
             (lhs @ Predicate::And(_, _), rhs) => lhs.harmonize(rhs, lhs_ctx, rhs_ctx).flip(),
@@ -711,24 +605,18 @@ impl Predicate {
                     self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
                 ) {
                     (Harmonization::Conflict, Harmonization::Conflict) => Harmonization::Conflict,
-                    (lhs, Harmonization::Conflict) => lhs,
-                    (Harmonization::Conflict, rhs) => rhs,
-                    (Harmonization::IncomparablePath, right) => right,
-                    (left, Harmonization::IncomparablePath) => left,
+                    (Harmonization::Conflict | Harmonization::IncomparablePath, rhs) => rhs,
+                    (lhs, Harmonization::Conflict | Harmonization::IncomparablePath) => lhs,
                     (Harmonization::Equal, rhs) => rhs,
                     (lhs, Harmonization::Equal) => lhs,
-                    (Harmonization::LhsWeaker, Harmonization::LhsWeaker) => {
+                    (_, Harmonization::LhsWeaker) | (Harmonization::LhsWeaker, _) => {
                         Harmonization::LhsWeaker
                     }
-                    (Harmonization::LhsStronger, Harmonization::LhsStronger) => {
-                        Harmonization::LhsStronger
-                    }
-                    (_, Harmonization::LhsWeaker) => Harmonization::LhsWeaker,
-                    (Harmonization::LhsWeaker, _) => Harmonization::LhsWeaker,
-                    (Harmonization::LhsStronger, Harmonization::StrongerTogether) => {
-                        Harmonization::LhsStronger
-                    }
-                    (Harmonization::StrongerTogether, Harmonization::LhsStronger) => {
+                    (
+                        Harmonization::LhsStronger,
+                        Harmonization::StrongerTogether | Harmonization::LhsStronger,
+                    )
+                    | (Harmonization::StrongerTogether, Harmonization::LhsStronger) => {
                         Harmonization::LhsStronger
                     }
                     (Harmonization::StrongerTogether, Harmonization::StrongerTogether) => {
@@ -790,7 +678,7 @@ pub fn glob(input: &str, pattern: &str) -> bool {
                         (false, acc, working)
                     } else {
                         acc.push(working);
-                        working = "".to_string();
+                        working = String::new();
                         (false, acc, working)
                     }
                 }
@@ -824,6 +712,7 @@ pub fn glob(input: &str, pattern: &str) -> bool {
         .iter()
         .enumerate()
         .try_fold(input, |acc, (idx, pattern_frag)| {
+            #[allow(clippy::if_same_then_else)]
             if let Some((pre, post)) = acc.split_once(pattern_frag) {
                 if idx == 0 && !pattern.starts_with('*') && !pre.is_empty() {
                     Err(())
