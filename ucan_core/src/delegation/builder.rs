@@ -1,35 +1,15 @@
 //! Typesafe builder for [`Delegation`].
 
 use super::{policy::predicate::Predicate, subject::DelegatedSubject};
-use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp};
+use crate::{
+    crypto::nonce::Nonce,
+    did::Did,
+    sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset},
+    time::timestamp::Timestamp,
+    unset::Unset,
+};
 use ipld_core::ipld::Ipld;
 use std::{collections::BTreeMap, marker::PhantomData};
-
-/// An unset required value.
-///
-/// Replace these with the expected type to make
-/// the builder convert to the built type.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct Unset;
-
-// FIXME move
-mod sealed {
-    use super::{DelegatedSubject, Did, Unset};
-
-    pub trait DidOrUnset {}
-    impl DidOrUnset for Unset {}
-    impl<D: Did> DidOrUnset for D {}
-
-    pub trait DelegatedSubjectOrUnset {}
-    impl DelegatedSubjectOrUnset for Unset {}
-    impl<D: Did> DelegatedSubjectOrUnset for DelegatedSubject<D> {}
-
-    pub trait CommandOrUnset {}
-    impl CommandOrUnset for Unset {}
-    impl CommandOrUnset for Vec<String> {}
-}
-
-use sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset};
 
 /// Typesafe builder for [`Delegation`].
 #[derive(Default, Debug, Clone)]
@@ -72,7 +52,7 @@ pub struct DelegationBuilder<
     _did: PhantomData<D>,
 }
 
-impl<D: Did> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
+impl<D: Did> DelegationBuilder<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn new() -> Self {

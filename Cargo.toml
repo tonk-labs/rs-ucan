@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "ucan_core",
-    "ucan_wasm"
+    "ucan_wasm",
+    "varsig"
 ]
 
 [workspace.package]

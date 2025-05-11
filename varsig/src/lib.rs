@@ -1,5 +1,3 @@
-//! Core UCAN functionality.
-
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(
     clippy::dbg_macro,
@@ -26,18 +24,6 @@
 )]
 #![forbid(unsafe_code)]
 
-pub mod collection;
-pub mod crypto;
-pub mod delegation;
-pub mod did;
-pub mod invocation;
-pub mod number;
-pub mod promise;
-pub mod receipt;
-pub mod task;
-pub mod time;
-pub mod unset;
-
-// Internal modules
-mod ipld;
-mod sealed;
+pub mod codec;
+pub mod encoding;
+pub mod header;

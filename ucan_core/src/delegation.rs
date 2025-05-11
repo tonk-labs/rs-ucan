@@ -5,8 +5,8 @@ pub mod policy;
 pub mod subject;
 
 use self::subject::DelegatedSubject;
-use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp};
-use builder::{DelegationBuilder, Unset};
+use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp, unset::Unset};
+use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
 use std::collections::BTreeMap;
