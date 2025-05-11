@@ -1,3 +1,7 @@
+//! [Varsig] implementation.
+//!
+//! [Varsig]: https://github.com/ChainAgnostic/varsig
+
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(
     clippy::dbg_macro,
@@ -26,4 +30,5 @@
 
 pub mod codec;
 pub mod encoding;
+pub mod envelope;
 pub mod header;
