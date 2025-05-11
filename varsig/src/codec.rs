@@ -34,7 +34,7 @@ pub trait Codec<T> {
     ) -> Result<(), Self::EncodingError>;
 
     /// Decode the payload from the given reader.
-    fn decode_payload<R: BufRead>(reader: R) -> Result<T, Self::DecodingError>;
+    fn decode_payload<R: BufRead>(&self, reader: &mut R) -> Result<T, Self::DecodingError>;
 }
 
 impl<T, C: ipld_core::codec::Codec<T>> Codec<T> for C
@@ -56,7 +56,7 @@ where
         C::encode(buffer, payload)
     }
 
-    fn decode_payload<R: BufRead>(reader: R) -> Result<T, Self::DecodingError> {
+    fn decode_payload<R: BufRead>(&self, reader: &mut R) -> Result<T, Self::DecodingError> {
         C::decode(reader)
     }
 }
