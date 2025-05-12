@@ -35,7 +35,7 @@ npm_rs = "1.0"
 
 [dev-dependencies]
 # NOTE: This is needed so that rand can be included in WASM builds
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.3", features = ["js"] }
 rand = "0.8"
 wasm-bindgen-test = "0.3"
 
