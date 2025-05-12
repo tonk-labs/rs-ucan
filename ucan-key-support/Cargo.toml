@@ -59,4 +59,4 @@ features = [
 ]
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-pollster = "0.3.0"
+pollster = "0.4.0"
