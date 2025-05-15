@@ -14,6 +14,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+async-signature.workspace = true
 ipld-core.workspace = true
 serde.workspace = true
 signature.workspace = true
@@ -25,7 +26,7 @@ serde_ipld_dagcbor = { version = "0.6.3", optional = true }
 serde_ipld_dagjson = { version = "0.2.0", optional = true }
 
 [features]
-default = ["dag_cbor"]
+default = ["dag_cbor", "sha2_256", "sha2_512"]
 
 identity = []
 jwt = []
@@ -34,3 +35,16 @@ eip191 = []
 dag_cbor = ["dep:serde_ipld_dagcbor"]
 dag_json = ["dep:serde_ipld_dagjson"]
 dag_pb = ["dep:ipld-dagpb", "dep:bytes"]
+
+sha2_256 = []
+sha2_384 = []
+sha2_512 = []
+shake_256 = []
+sha3_256 = []
+sha3_384 = []
+sha3_512 = []
+blake2b = []
+blake3 = []
+keccak256 = []
+keccak384 = []
+keccak512 = []

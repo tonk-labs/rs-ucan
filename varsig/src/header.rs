@@ -2,36 +2,49 @@
 
 pub mod traits;
 
+use crate::{
+    curve::{P256, P521},
+    encoding::Encoding,
+    hash::{HashAlgorithm, Sha2_256, Sha2_512},
+};
 use ipld_core::codec::Codec;
-
-use crate::encoding::Encoding;
 
 #[derive(Debug, Clone)]
 pub struct Header<T, A = SignatureAlgorithm, C: Codec<T> = Encoding> {
+    /// Signature algorithm.
     pub sig_algo: A,
+
+    /// The codec used to encode the payload.
     pub codec: C,
+
     _marker: std::marker::PhantomData<T>,
 }
 
+type Es256 = EcDsa<P256, Sha2_256>;
+
+type Es512 = EcDsa<P521, Sha2_512>;
+
+type Ed25519 = EdDsa(Edwards25519);
+
 /// The signature algorithm used in the header.
 #[derive(Debug, Clone)]
-pub enum SignatureAlgorithm {
+pub enum SignatureAlgorithm<C, H> {
     /// EdDSA signature algorithm.
     EdDsa(EdDsa),
 
     /// ECDSA signature algorithm.
-    EcDsa(EcDsa),
+    EcDsa(EcDsa<C, H>),
 
     /// RSA signature algorithm.
-    Rsa(Rsa),
+    Rsa(Rsa<H>),
 
     /// BLS signature algorithm.
-    Bls(Bls),
+    Bls(Bls12_381),
 }
 
 /// The BLS signature algorithm.
 #[derive(Debug, Clone)]
-pub struct Bls {
+pub struct Bls12_381 {
     /// The curve used for BLS.
     pub bls_sig_field: BlsField,
 
@@ -41,15 +54,15 @@ pub struct Bls {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BlsField {
-    MinimalPublicKeySize_G1G2,
-    MinimalSignatureSize_G2G1,
+    MinimalPublicKeySize,
+    MinimalSignatureSize,
 }
 
 /// The RSA signature algorithm.
 #[derive(Debug, Clone)]
-pub struct Rsa {
+pub struct Rsa<H: HashTrait> {
     /// The key size in bits.
-    pub hash: HashAlgorithm,
+    pub hash: H,
 
     /// The key size in bytes.
     pub key_length: u16,
@@ -77,15 +90,11 @@ pub enum EdDsaCurve {
 
 /// The ECDSA signature algorithm.
 #[derive(Debug, Clone)]
-pub struct EcDsa {
-    /// The curve used for ECDSA.
-    pub curve: EcDsaCurve,
-
-    /// The hash algorithm used for ECDSA.
-    pub hash: HashAlgorithm,
-
+pub struct EcDsa<C, H> {
     /// ECDSA parity bit.
     pub parity_bit: bool,
+
+    _marker: std::marker::PhantomData<(C, H)>,
 }
 
 /// The elliptic curves used for ECDSA.
@@ -99,20 +108,4 @@ pub enum EcDsaCurve {
 
     /// P-521 curve
     P521,
-}
-
-/// Hash algorithms.
-#[derive(Debug, Clone, Copy)]
-pub enum HashAlgorithm {
-    Sha2_256,
-    Sha2_384,
-    Sha2_512,
-    Shake256,
-    Sha3_256,
-    Sha3_512,
-    Blake2b,
-    Blake3,
-    Keccak256,
-    Keccak384,
-    Keccak512,
 }

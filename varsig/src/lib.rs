@@ -29,6 +29,9 @@
 #![forbid(unsafe_code)]
 
 pub mod codec;
+pub mod curve;
 pub mod encoding;
 pub mod envelope;
+pub mod hash;
 pub mod header;
+pub mod signer;

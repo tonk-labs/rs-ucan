@@ -4,7 +4,7 @@ use std::{error::Error, fmt::Debug};
 use thiserror::Error;
 
 // FIXME rename? Varsig?
-pub trait Header<T>: Codec<T> {
+pub trait Verify<T>: Codec<T> {
     /// The signature type for the header.
     type Signature: SignatureEncoding;
 
@@ -17,23 +17,23 @@ pub trait Header<T>: Codec<T> {
         signature: &Self::Signature,
         payload: &T,
     ) -> Result<(), VerificationError<Self::EncodingError>> {
-        let mut buffer = vec![];
+        let mut buffer = Vec::new();
         self.encode_payload(payload, &mut buffer)
             .map_err(VerificationError::EncodingError)?;
         verifier
             .verify(&buffer, signature)
-            .map_err(VerificationError::SignatureError)
+            .map_err(VerificationError::VerificationError)
     }
 }
 
 /// Error type for verification errors.
-#[derive(Debug, Error)]
-pub enum VerificationError<E: Error + Debug> {
+#[derive(Error)]
+pub enum VerificationError<E: Error> {
     /// Codec error.
-    #[error("Codec error: {0}")]
+    #[error(transparent)]
     EncodingError(E),
 
-    /// Signature error.
-    #[error("Signature error: {0}")]
-    SignatureError(signature::Error),
+    /// Verification error.
+    #[error(transparent)]
+    VerificationError(signature::Error),
 }

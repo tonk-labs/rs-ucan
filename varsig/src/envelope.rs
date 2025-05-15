@@ -1,4 +1,4 @@
-use crate::header::traits::Header;
+use crate::{header::traits::Header, signer::Header};
 use serde::{Deserialize, Serialize};
 use signature::SignatureEncoding;
 
