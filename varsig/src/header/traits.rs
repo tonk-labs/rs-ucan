@@ -1,24 +1,28 @@
 use crate::codec::Codec;
 use signature::{SignatureEncoding, Verifier};
-use std::{error::Error, fmt::Debug};
+use std::error::Error;
 use thiserror::Error;
 
-// FIXME rename? Varsig?
-pub trait Verify<T>: Codec<T> {
+pub trait Verify {
     /// The signature type for the header.
     type Signature: SignatureEncoding;
 
     /// The associated signer (referenced or owned signing key for the header).
     type Verifier: Verifier<Self::Signature>;
 
-    fn try_verify(
+    fn prefix(&self) -> u32;
+    fn config(&self) -> Vec<u8>; // FIXME
+
+    fn try_verify<T, C: Codec<T>>(
         &self,
-        verifier: &Self::Verifier,
+        codec: &C,
+        verifier: &Self::Verifier, // e.g. PK
         signature: &Self::Signature,
         payload: &T,
-    ) -> Result<(), VerificationError<Self::EncodingError>> {
+    ) -> Result<(), VerificationError<C::EncodingError>> {
         let mut buffer = Vec::new();
-        self.encode_payload(payload, &mut buffer)
+        codec
+            .encode_payload(payload, &mut buffer)
             .map_err(VerificationError::EncodingError)?;
         verifier
             .verify(&buffer, signature)

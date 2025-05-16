@@ -2,110 +2,84 @@
 
 pub mod traits;
 
+use std::marker::PhantomData;
+
 use crate::{
-    curve::{P256, P521},
-    encoding::Encoding,
-    hash::{HashAlgorithm, Sha2_256, Sha2_512},
+    curve::{Edwards448, Secp256k1, Secp256r1},
+    hash::{Sha2_256, Sha2_384, Sha2_512},
 };
-use ipld_core::codec::Codec;
 
-#[derive(Debug, Clone)]
-pub struct Header<T, A = SignatureAlgorithm, C: Codec<T> = Encoding> {
-    /// Signature algorithm.
-    pub sig_algo: A,
+type Rs256<const L: usize> = Rsa<L, Sha2_256>;
+type Es256 = EcDsa<Secp256r1, Sha2_256>;
+type Es384 = EcDsa<Secp256r1, Sha2_384>;
+type Es512 = EcDsa<Secp256r1, Sha2_512>;
+type Es256k = EcDsa<Secp256k1, Sha2_256>;
+type Ed25519 = EdDsa<Edwards25519, Sha2_512>;
 
-    /// The codec used to encode the payload.
-    pub codec: C,
+/// FIXME have a big list and enable with features
+pub enum WebCrypto {
+    Rs256_2048(Rs256<2048>),
+    Rs256_4096(Rs256<4096>),
 
-    _marker: std::marker::PhantomData<T>,
+    Es256(Es256),
+    Es384(Es384),
+    Es512(Es512),
+
+    Ed25519(Ed25519),
 }
 
-type Es256 = EcDsa<P256, Sha2_256>;
-
-type Es512 = EcDsa<P521, Sha2_512>;
-
-type Ed25519 = EdDsa(Edwards25519);
-
-/// The signature algorithm used in the header.
-#[derive(Debug, Clone)]
-pub enum SignatureAlgorithm<C, H> {
-    /// EdDSA signature algorithm.
-    EdDsa(EdDsa),
-
-    /// ECDSA signature algorithm.
-    EcDsa(EcDsa<C, H>),
-
-    /// RSA signature algorithm.
-    Rsa(Rsa<H>),
-
-    /// BLS signature algorithm.
-    Bls(Bls12_381),
+pub enum Common {
+    Es256(Es256),
+    Es256k(Es256k),
+    Ed25519(Ed25519),
 }
+
+/// Twisted Edwards Curve25519
+pub struct Edwards25519;
+
+pub trait BlsCurve {}
+impl BlsCurve for G1 {}
+impl BlsCurve for G2 {}
+
+/// Minimal public key size
+pub struct G1;
+
+/// Minimal signature size
+pub struct G2;
 
 /// The BLS signature algorithm.
 #[derive(Debug, Clone)]
-pub struct Bls12_381 {
-    /// The curve used for BLS.
-    pub bls_sig_field: BlsField,
+pub struct Bls<PkCurve: BlsCurve, H: Multihasher>(PhantomData<(PkCurve, H)>);
 
-    /// The hash algorithm used for BLS.
-    pub hash: HashAlgorithm,
+/// Multihash Prefix
+pub trait Multihasher {
+    const MULTIHASH_CODE: u64;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum BlsField {
-    MinimalPublicKeySize,
-    MinimalSignatureSize,
+impl Multihasher for Sha2_256 {
+    const MULTIHASH_CODE: u64 = 0x12;
+}
+
+impl Multihasher for Sha2_512 {
+    const MULTIHASH_CODE: u64 = 0x13;
 }
 
 /// The RSA signature algorithm.
-#[derive(Debug, Clone)]
-pub struct Rsa<H: HashTrait> {
-    /// The key size in bits.
-    pub hash: H,
-
-    /// The key size in bytes.
-    pub key_length: u16,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Rsa<const L: usize, H: Multihasher>(PhantomData<H>);
 
 /// The EdDSA signature algorithm.
-#[derive(Debug, Clone)]
-pub struct EdDsa {
-    /// The curve used for EdDSA.
-    pub curve: EdDsaCurve,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EdDsa<C: EdDsaCurve, H: Multihasher>(PhantomData<(C, H)>);
 
-    /// The hash algorithm used for EdDSA.
-    pub hash: HashAlgorithm,
-}
-
-/// The EdDSA curves.
-#[derive(Debug, Clone, Copy)]
-pub enum EdDsaCurve {
-    /// edwards25519 Curve
-    Edwards25519,
-
-    /// edwards448 Curve
-    Edwards448,
-}
+pub trait EdDsaCurve {}
+impl EdDsaCurve for Edwards25519 {}
+impl EdDsaCurve for Edwards448 {}
 
 /// The ECDSA signature algorithm.
-#[derive(Debug, Clone)]
-pub struct EcDsa<C, H> {
-    /// ECDSA parity bit.
-    pub parity_bit: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EcDsa<C: EcDsaCurve, H: Multihasher>(PhantomData<(C, H)>);
 
-    _marker: std::marker::PhantomData<(C, H)>,
-}
-
-/// The elliptic curves used for ECDSA.
-#[derive(Debug, Clone, Copy)]
-pub enum EcDsaCurve {
-    /// P-256 curve
-    P256,
-
-    /// P-384 curve
-    P384,
-
-    /// P-521 curve
-    P521,
-}
+pub trait EcDsaCurve {}
+impl EcDsaCurve for Secp256k1 {}
+impl EcDsaCurve for Secp256r1 {}

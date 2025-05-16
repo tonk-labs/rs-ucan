@@ -1,79 +1,60 @@
-use std::error::Error;
-
 use async_signature::AsyncSigner;
 use signature::Signer;
+use std::error::Error;
 use thiserror::Error;
 
-use crate::{
-    envelope::{Envelope, EnvelopePayload},
-    header::traits::Verify,
-};
+use crate::{codec::Codec, header::traits::Verify};
 
-pub trait Header<T>: Verify<T> {
+pub trait Sign: Verify {
     type Signer: Signer<Self::Signature>;
-    type Error: Error;
+    type SignError: Error;
 
-    fn try_sign(
+    #[tracing::instrument(skip_all)]
+    fn try_sign<T, C: Codec<T>>(
         &self,
+        codec: &C,
         signer: &Self::Signer,
         payload: &T,
-    ) -> Result<Self::Signature, SigningError<Self::EncodingError, Self::Error>> {
+    ) -> Result<Self::Signature, SignerError<C::EncodingError, Self::SignError>> {
         let mut buffer = Vec::new();
-        self.encode_payload(payload, &mut buffer)?;
-        Ok(signer.sign(&buffer)?)
-    }
-
-    fn try_sign_envelope(
-        self,
-        signer: &Self::Signer,
-        payload: T,
-    ) -> Result<Self::Signature, SigningError<Self::EncodingError, Self::Error>> {
-        let envelope = EnvelopePayload {
-            header: self,
-            payload,
-        };
-        let signature = envelope.header.try_sign(signer, &envelope)?;
-        Ok(Envelope(envelope, payload))
+        codec
+            .encode_payload(payload, &mut buffer)
+            .map_err(SignerError::EncodingError)?;
+        Ok(signer
+            .try_sign(&buffer)
+            .map_err(SignerError::SigningError)?)
     }
 }
 
-// FIXME tracing
-
-pub trait AsyncHeader<T>: Verify<T> {
+pub trait AsyncSign: Verify {
     type AsyncSigner: AsyncSigner<Self::Signature>;
-    type AsyncError: Error;
+    type AsyncSignError: Error;
 
-    async fn try_sign_async(
+    #[tracing::instrument(skip_all)]
+    async fn try_sign_async<T, C: Codec<T>>(
         &self,
+        codec: &C,
         signer: &Self::AsyncSigner,
         payload: &T,
-    ) -> Result<Self::Signature, SigningError<Self::EncodingError, Self::AsyncError>> {
+    ) -> Result<Self::Signature, SignerError<C::EncodingError, Self::AsyncSignError>> {
         let mut buffer = Vec::new();
-        self.encode_payload(payload, &mut buffer)?;
-        Ok(signer.sign_async(&buffer).await?)
-    }
-
-    async fn try_sign_envelope_async(
-        self,
-        signer: &Self::AsyncSigner,
-        payload: T,
-    ) -> Result<Self::Signature, SigningError<Self::EncodingError, Self::AsyncError>> {
-        let envelope = EnvelopePayload {
-            header: self,
-            payload,
-        };
-        let signature = envelope.header.try_sign_async(signer, &envelope).await?;
-        Ok(Envelope(envelope, payload))
+        codec
+            .encode_payload(payload, &mut buffer)
+            .map_err(SignerError::EncodingError)?;
+        Ok(signer
+            .sign_async(&buffer)
+            .await
+            .map_err(SignerError::SigningError)?)
     }
 }
 
 #[derive(Error)]
-pub enum SigningError<Ee: Error, Ve: Error> {
+pub enum SignerError<Ee: Error, Ve: Error> {
     #[error(transparent)]
     EncodingError(Ee),
 
-    #[error(transparent)]
-    SigningError(#[from] signature::Error),
+    #[error("Signing error: {0}")]
+    SigningError(signature::Error),
 
     #[error(transparent)]
     VarsigError(Ve),

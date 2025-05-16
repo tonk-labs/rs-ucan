@@ -1,6 +1,6 @@
 [package]
 name = "varsig"
-description = "IPLD signature metadata"
+description = "Varsig signature metadata"
 
 readme = "README.md"
 keywords = ["signature", "metadata", "ipld"]
@@ -19,6 +19,7 @@ ipld-core.workspace = true
 serde.workspace = true
 signature.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 bytes = { version =  "1.10", optional = true }
 ipld-dagpb = { version = "0.2.1", optional = true }
@@ -26,7 +27,8 @@ serde_ipld_dagcbor = { version = "0.6.3", optional = true }
 serde_ipld_dagjson = { version = "0.2.0", optional = true }
 
 [features]
-default = ["dag_cbor", "sha2_256", "sha2_512"]
+default = ["dag_cbor", "es256", "es256k", "ed25519"]
+webcrypto = ["rs256_2048", "rs256_4096", "es256", "es384", "es512", "ed25519"]
 
 identity = []
 jwt = []
@@ -48,3 +50,17 @@ blake3 = []
 keccak256 = []
 keccak384 = []
 keccak512 = []
+
+rsa = []
+secp256r1 = []
+secp256k1 = []
+edwards25519 = []
+
+es256 = ["secp256r1", "sha2_256"]
+es384 = ["secp256r1", "sha2_384"]
+es512 = ["secp256r1", "sha2_512"]
+es256k = ["secp256k1", "sha2_256"]
+ed25519 = ["edwards25519", "sha2_512"]
+
+rs256_2048 = ["rsa", "sha2_256"]
+rs256_4096 = ["rsa", "sha2_256"]
