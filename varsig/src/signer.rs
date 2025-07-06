@@ -1,6 +1,6 @@
 use async_signature::AsyncSigner;
 use signature::Signer;
-use std::error::Error;
+use std::{error::Error, future::Future};
 use thiserror::Error;
 
 use crate::{codec::Codec, header::traits::Verify};
@@ -31,20 +31,23 @@ pub trait AsyncSign: Verify {
     type AsyncSignError: Error;
 
     #[tracing::instrument(skip_all)]
-    async fn try_sign_async<T, C: Codec<T>>(
+    fn try_sign_async<T, C: Codec<T>>(
         &self,
         codec: &C,
         signer: &Self::AsyncSigner,
         payload: &T,
-    ) -> Result<Self::Signature, SignerError<C::EncodingError, Self::AsyncSignError>> {
-        let mut buffer = Vec::new();
-        codec
-            .encode_payload(payload, &mut buffer)
-            .map_err(SignerError::EncodingError)?;
-        Ok(signer
-            .sign_async(&buffer)
-            .await
-            .map_err(SignerError::SigningError)?)
+    ) -> impl Future<Output = Result<Self::Signature, SignerError<C::EncodingError, Self::AsyncSignError>>>
+    {
+        async {
+            let mut buffer = Vec::new();
+            codec
+                .encode_payload(payload, &mut buffer)
+                .map_err(SignerError::EncodingError)?;
+            Ok(signer
+                .sign_async(&buffer)
+                .await
+                .map_err(SignerError::SigningError)?)
+        }
     }
 }
 

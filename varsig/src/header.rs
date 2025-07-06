@@ -6,12 +6,18 @@ use std::marker::PhantomData;
 
 use crate::{
     curve::{Edwards448, Secp256k1, Secp256r1},
-    hash::{Sha2_256, Sha2_384, Sha2_512},
+    hash::{Sha2_256, Sha2_512},
 };
+
+#[cfg(feature = "sha2_384")]
+use crate::hash::Sha2_384;
 
 type Rs256<const L: usize> = Rsa<L, Sha2_256>;
 type Es256 = EcDsa<Secp256r1, Sha2_256>;
+
+#[cfg(feature = "sha2_384")]
 type Es384 = EcDsa<Secp256r1, Sha2_384>;
+
 type Es512 = EcDsa<Secp256r1, Sha2_512>;
 type Es256k = EcDsa<Secp256k1, Sha2_256>;
 type Ed25519 = EdDsa<Edwards25519, Sha2_512>;
@@ -22,7 +28,10 @@ pub enum WebCrypto {
     Rs256_4096(Rs256<4096>),
 
     Es256(Es256),
+
+    #[cfg(feature = "sha2_384")]
     Es384(Es384),
+
     Es512(Es512),
 
     Ed25519(Ed25519),
@@ -58,6 +67,11 @@ pub trait Multihasher {
 
 impl Multihasher for Sha2_256 {
     const MULTIHASH_CODE: u64 = 0x12;
+}
+
+#[cfg(feature = "sha2_384")]
+impl Multihasher for Sha2_384 {
+    const MULTIHASH_CODE: u64 = 0x15;
 }
 
 impl Multihasher for Sha2_512 {

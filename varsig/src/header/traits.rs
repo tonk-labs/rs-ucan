@@ -10,8 +10,15 @@ pub trait Verify {
     /// The associated signer (referenced or owned signing key for the header).
     type Verifier: Verifier<Self::Signature>;
 
-    fn prefix(&self) -> u32;
-    fn config(&self) -> Vec<u8>; // FIXME
+    /// The prefix for the signature type.
+    ///
+    /// For example, EdDSA would be `0xED`.
+    fn prefix(&self) -> u64;
+
+    /// The configuration as [`u64`] tags.
+    ///
+    /// These will be automatically converted to LEB128 by the serializer.
+    fn config_tags(&self) -> Vec<u64>;
 
     fn try_verify<T, C: Codec<T>>(
         &self,
@@ -38,6 +45,6 @@ pub enum VerificationError<E: Error> {
     EncodingError(E),
 
     /// Verification error.
-    #[error(transparent)]
+    #[error("Verification error: {0}")]
     VerificationError(signature::Error),
 }

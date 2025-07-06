@@ -2,7 +2,7 @@
   description = "ucan";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-24.11";
+    nixpkgs.url = "nixpkgs/nixos-25.05";
     nixos-unstable.url = "nixpkgs/nixos-unstable-small";
 
     command-utils.url = "github:expede/nix-command-utils";
@@ -11,7 +11,7 @@
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
+      # inputs.flake-utils.follows = "flake-utils";
     };
   };
 
@@ -68,11 +68,11 @@
           taplo
         ];
 
-        darwin-installs = with pkgs.darwin.apple_sdk.frameworks; [
-          Security
-          CoreFoundation
-          Foundation
-        ];
+        #  darwin-installs = with pkgs.darwin.apple_sdk.frameworks; [
+        #    Security
+        #    CoreFoundation
+        #    Foundation
+        #  ];
 
         cargo-installs = with pkgs; [
           cargo-criterion
@@ -246,8 +246,8 @@
               # pkgs.wasm-pack
             ]
             ++ format-pkgs
-            ++ cargo-installs
-            ++ lib.optionals stdenv.isDarwin darwin-installs;
+            ++ cargo-installs;
+            # ++ lib.optionals stdenv.isDarwin darwin-installs;
 
          shellHook = ''
             # export RUSTC_WRAPPER="${pkgs.sccache}/bin/sccache"

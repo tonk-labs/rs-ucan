@@ -11,16 +11,14 @@ use crate::{
     header::{traits::Verify, EcDsa},
 };
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct Varsig<V: Verify, C: Codec<T>, T> {
     codec: C,
     verifier: V,
     _data: PhantomData<T>,
 }
 
-pub trait Foo {
-    fn prefix(&self) -> u32;
-    fn config(&self) -> Vec<u8>;
-}
+pub struct Leb128(Vec<u8>);
 
 impl<V: Verify, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -28,13 +26,32 @@ impl<V: Verify, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
         S: serde::Serializer,
     {
         let mut bytes = vec![0x34, 0x01];
+        leb128::write::unsigned(&mut bytes, self.verifier.prefix());
+        for segment in self.verifier.config_tags().iter() {
+            leb128::write::unsigned(&mut bytes, *segment);
+        }
+        serializer.serialize_bytes(&bytes)
+    }
+}
 
-        let prefix = self.verifier.prefix();
-        let prefix_varint = prefix.expect("FIXME");
-        bytes.append(prefix_varint);
-
-        bytes.append(self.verifier.to_bytes()); // FIXME varints
-        bytes.serialize(serializer)
+impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+        // let bytes = Vec::<u8>::deserialize(deserializer)?;
+        // let mut cursor = std::io::Cursor::new(bytes);
+        // let prefix = leb128::read::unsigned(&mut cursor).map_err(serde::de::Error::custom)?;
+        // let mut tags = Vec::new();
+        // while let Ok(tag) = leb128::read::unsigned(&mut cursor) {
+        //     tags.push(tag);
+        // }
+        // Ok(Varsig {
+        //     codec: DagCborCodec,
+        //     verifier: V::from_prefix_and_tags(prefix, tags),
+        //     _data: PhantomData,
+        // })
     }
 }
 
