@@ -34,4 +34,8 @@ pub mod encoding;
 pub mod envelope;
 pub mod hash;
 pub mod header;
+pub mod signature;
 pub mod signer;
+pub mod verify;
+
+pub use header::Varsig;

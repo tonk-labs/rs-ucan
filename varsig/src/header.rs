@@ -1,99 +1,116 @@
 //! Varsig header
 
-pub mod traits;
+use crate::{codec::Codec, verify::Verify};
+use serde::{Deserialize, Serialize};
+use std::{io::Cursor, marker::PhantomData};
 
-use std::marker::PhantomData;
-
-use crate::{
-    curve::{Edwards448, Secp256k1, Secp256r1},
-    hash::{Sha2_256, Sha2_512},
-};
-
-#[cfg(feature = "sha2_384")]
-use crate::hash::Sha2_384;
-
-type Rs256<const L: usize> = Rsa<L, Sha2_256>;
-type Es256 = EcDsa<Secp256r1, Sha2_256>;
-
-#[cfg(feature = "sha2_384")]
-type Es384 = EcDsa<Secp256r1, Sha2_384>;
-
-type Es512 = EcDsa<Secp256r1, Sha2_512>;
-type Es256k = EcDsa<Secp256k1, Sha2_256>;
-type Ed25519 = EdDsa<Edwards25519, Sha2_512>;
-
-/// FIXME have a big list and enable with features
-pub enum WebCrypto {
-    Rs256_2048(Rs256<2048>),
-    Rs256_4096(Rs256<4096>),
-
-    Es256(Es256),
-
-    #[cfg(feature = "sha2_384")]
-    Es384(Es384),
-
-    Es512(Es512),
-
-    Ed25519(Ed25519),
+/// Top-level Varsig header type.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct Varsig<V: Verify, C: Codec<T>, T> {
+    verifier: V,
+    codec: C,
+    _data: PhantomData<T>,
 }
 
-pub enum Common {
-    Es256(Es256),
-    Es256k(Es256k),
-    Ed25519(Ed25519),
+impl<V: Verify, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut bytes = Vec::new();
+
+        // Varsig tag
+        leb128::write::unsigned(&mut bytes, 0x34).map_err(|e| {
+            serde::ser::Error::custom(format!(
+                "unable to varsig prefix tag write into new owned vec: {e}"
+            ))
+        })?;
+
+        // Version tag
+        leb128::write::unsigned(&mut bytes, 0x01).map_err(|e| {
+            serde::ser::Error::custom(format!(
+                "unable to write varsig version tag into owned vec with one element: {e}"
+            ))
+        })?;
+
+        // Signature tag
+        leb128::write::unsigned(&mut bytes, self.verifier.prefix()).map_err(|e| {
+            serde::ser::Error::custom(format!(
+                "unable to write verifier prefix tag into owned vec: {e}"
+            ))
+        })?;
+
+        for segment in &self.verifier.config_tags() {
+            leb128::write::unsigned(&mut bytes, *segment).map_err(|e| {
+                serde::ser::Error::custom(format!(
+                    "unable to write varsig config segment into owned vec {segment}: {e}",
+                ))
+            })?;
+        }
+
+        // Codec tag
+        leb128::write::unsigned(&mut bytes, self.codec.multicodec_code()).map_err(|e| {
+            serde::ser::Error::custom(format!(
+                "unable to write varsig version tag into owned vec with one element: {e}"
+            ))
+        })?;
+
+        serializer.serialize_bytes(&bytes)
+    }
 }
 
-/// Twisted Edwards Curve25519
-pub struct Edwards25519;
+impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = Vec::<u8>::deserialize(deserializer).map_err(|e| {
+            serde::de::Error::custom(format!("unable to deserialize varsig header: {e}"))
+        })?;
 
-pub trait BlsCurve {}
-impl BlsCurve for G1 {}
-impl BlsCurve for G2 {}
+        let len = bytes.len() as u64;
+        let mut cursor = Cursor::new(bytes);
 
-/// Minimal public key size
-pub struct G1;
+        let varsig_tag = leb128::read::unsigned(&mut cursor).map_err(|e| {
+            serde::de::Error::custom(format!("unable to read leb128 unsigned: {e}"))
+        })?;
 
-/// Minimal signature size
-pub struct G2;
+        if varsig_tag != 0x34 {
+            return Err(serde::de::Error::custom(format!(
+                "expected varsig tag 0x34, found {varsig_tag:#x}"
+            )));
+        }
 
-/// The BLS signature algorithm.
-#[derive(Debug, Clone)]
-pub struct Bls<PkCurve: BlsCurve, H: Multihasher>(PhantomData<(PkCurve, H)>);
+        let version_tag = leb128::read::unsigned(&mut cursor).map_err(|e| {
+            serde::de::Error::custom(format!("unable to read leb128 unsigned: {e}"))
+        })?;
 
-/// Multihash Prefix
-pub trait Multihasher {
-    const MULTIHASH_CODE: u64;
+        if version_tag != 0x01 {
+            return Err(serde::de::Error::custom(format!(
+                "expected varsig version tag 0x01, found {version_tag:#x}"
+            )));
+        }
+
+        let mut remaining = Vec::new();
+
+        while cursor.position() < len {
+            match leb128::read::unsigned(&mut cursor) {
+                Ok(segment) => remaining.push(segment),
+                Err(e) => {
+                    return Err(serde::de::Error::custom(format!(
+                        "unable to read leb128 unsigned segment: {e}"
+                    )));
+                }
+            }
+        }
+
+        let (verifier, more) = V::try_from_tags(remaining.as_slice()).expect("FIXME");
+        let codec = C::try_from_tags(more).expect("FIXME");
+
+        Ok(Varsig {
+            verifier,
+            codec,
+            _data: PhantomData,
+        })
+    }
 }
-
-impl Multihasher for Sha2_256 {
-    const MULTIHASH_CODE: u64 = 0x12;
-}
-
-#[cfg(feature = "sha2_384")]
-impl Multihasher for Sha2_384 {
-    const MULTIHASH_CODE: u64 = 0x15;
-}
-
-impl Multihasher for Sha2_512 {
-    const MULTIHASH_CODE: u64 = 0x13;
-}
-
-/// The RSA signature algorithm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Rsa<const L: usize, H: Multihasher>(PhantomData<H>);
-
-/// The EdDSA signature algorithm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EdDsa<C: EdDsaCurve, H: Multihasher>(PhantomData<(C, H)>);
-
-pub trait EdDsaCurve {}
-impl EdDsaCurve for Edwards25519 {}
-impl EdDsaCurve for Edwards448 {}
-
-/// The ECDSA signature algorithm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EcDsa<C: EcDsaCurve, H: Multihasher>(PhantomData<(C, H)>);
-
-pub trait EcDsaCurve {}
-impl EcDsaCurve for Secp256k1 {}
-impl EcDsaCurve for Secp256r1 {}

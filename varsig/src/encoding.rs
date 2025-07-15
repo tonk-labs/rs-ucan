@@ -31,7 +31,33 @@ impl<T: Serialize + for<'a> Deserialize<'a>> Codec<T> for Encoding {
     type DecodingError = DecodingError;
 
     fn multicodec_code(&self) -> u64 {
-        (*self as u32) as u64
+        *self as u64
+    }
+
+    fn try_from_tags(code: &[u64]) -> Option<Self> {
+        if code.is_empty() {
+            return None;
+        }
+
+        if code.len() > 1 {
+            return None;
+        }
+
+        match code[0] {
+            #[cfg(feature = "dag_cbor")]
+            0x71 => Some(Encoding::DagCbor),
+
+            #[cfg(feature = "dag_json")]
+            0x0129 => Some(Encoding::DagJson),
+
+            #[cfg(feature = "jwt")]
+            0x6a77 => Some(Encoding::Jwt),
+
+            #[cfg(feature = "eip191")]
+            0xe191 => Some(Encoding::Eip191),
+
+            _ => None,
+        }
     }
 
     /// Encode the payload to the given buffer.
@@ -55,16 +81,17 @@ impl<T: Serialize + for<'a> Deserialize<'a>> Codec<T> for Encoding {
         }
     }
 
-    fn decode_payload<R: BufRead>(&self, reader: &mut R) -> Result<T, Self::DecodingError> {
+    /// Decode the payload from the given reader buffer.
+    fn decode_payload<R: BufRead>(&self, _reader: &mut R) -> Result<T, Self::DecodingError> {
         match self {
             #[cfg(feature = "dag_cbor")]
             Encoding::DagCbor => {
-                todo!()
+                todo!("FIXME")
                 // Ok::<Ipld, Self::DecodingError>(serde_ipld_dagcbor::from_reader(reader)?)
             }
 
             #[cfg(feature = "dag_json")]
-            Encoding::DagJson => Ok(serde_ipld_dagjson::from_reader(reader)?),
+            Encoding::DagJson => todo!("FIXME"), // Ok(serde_ipld_dagjson::from_reader(reader)?),
 
             #[cfg(feature = "jwt")]
             Encoding::Jwt => todo!(),
