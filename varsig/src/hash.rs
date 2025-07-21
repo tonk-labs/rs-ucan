@@ -11,7 +11,7 @@ pub trait Multihasher {
 
 /// SHA2-256 hash algorithm.
 #[cfg(feature = "sha2_256")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha2_256;
 
 #[cfg(feature = "sha2_256")]
@@ -21,7 +21,7 @@ impl Multihasher for Sha2_256 {
 
 /// SHA2-384 hash algorithm.
 #[cfg(feature = "sha2_384")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha2_384;
 
 #[cfg(feature = "sha2_384")]
@@ -31,7 +31,7 @@ impl Multihasher for Sha2_384 {
 
 /// SHA2-512 hash algorithm.
 #[cfg(feature = "sha2_512")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha2_512;
 
 #[cfg(feature = "sha2_512")]
@@ -41,7 +41,7 @@ impl Multihasher for Sha2_512 {
 
 /// Shake256 hash algorithm.
 #[cfg(feature = "shake_256")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Shake256;
 
 #[cfg(feature = "shake_256")]
@@ -51,7 +51,7 @@ impl Multihasher for Shake256 {
 
 /// Blake2b hash algorithm.
 #[cfg(feature = "blake2b")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Blake2b;
 
 #[cfg(feature = "blake2b")]
@@ -61,7 +61,7 @@ impl Multihasher for Blake2b {
 
 /// Blake3 hash algorithm.
 #[cfg(feature = "blake3")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Blake3;
 
 #[cfg(feature = "blake3")]
@@ -71,7 +71,7 @@ impl Multihasher for Blake3 {
 
 /// Keccak256 hash algorithm.
 #[cfg(feature = "keccak256")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak256;
 
 #[cfg(feature = "keccak256")]
@@ -81,7 +81,7 @@ impl Multihasher for Keccak256 {
 
 /// Keccak384 hash algorithm.
 #[cfg(feature = "keccak384")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak384;
 
 #[cfg(feature = "keccak384")]
@@ -91,7 +91,7 @@ impl Multihasher for Keccak384 {
 
 /// Keccak512 hash algorithm.
 #[cfg(feature = "keccak512")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak512;
 
 #[cfg(feature = "keccak512")]
@@ -101,7 +101,7 @@ impl Multihasher for Keccak512 {
 
 /// SHA3-256 hash algorithm.
 #[cfg(feature = "sha3_256")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha3_256;
 
 #[cfg(feature = "sha3_256")]
@@ -111,7 +111,7 @@ impl Multihasher for Sha3_256 {
 
 /// SHA3-384 hash algorithm.
 #[cfg(feature = "sha3_384")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha3_384;
 
 #[cfg(feature = "sha3_384")]
@@ -121,7 +121,7 @@ impl Multihasher for Sha3_384 {
 
 /// SHA3-512 hash algorithm.
 #[cfg(feature = "sha3_512")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha3_512;
 
 #[cfg(feature = "sha3_512")]

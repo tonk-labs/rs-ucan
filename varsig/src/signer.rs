@@ -5,7 +5,7 @@ use signature::Signer;
 use std::{error::Error, future::Future};
 use thiserror::Error;
 
-use crate::{codec::Codec, signature::Ed25519, verify::Verify};
+use crate::{codec::Codec, signature::eddsa::Ed25519, verify::Verify};
 
 /// Synchronous signing trait.
 pub trait Sign: Verify {

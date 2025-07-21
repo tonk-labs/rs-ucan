@@ -8,6 +8,12 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{io::Cursor, marker::PhantomData};
 
+#[cfg(feature = "dag_cbor")]
+use serde_ipld_dagcbor::codec::DagCborCodec;
+
+#[cfg(feature = "dag_json")]
+use serde_ipld_dagjson::codec::DagJsonCodec;
+
 /// Top-level Varsig header type.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct Varsig<V: Verify, C: Codec<T>, T> {
@@ -81,6 +87,34 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     ) -> Result<(), crate::verify::VerificationError<C::EncodingError>> {
         self.verifier_cfg()
             .try_verify(&self.codec, verifier, signature, payload)
+    }
+}
+
+#[cfg(feature = "dag_cbor")]
+impl<V: Verify + Default, T> Default for Varsig<V, DagCborCodec, T>
+where
+    DagCborCodec: Codec<T>,
+{
+    fn default() -> Self {
+        Varsig {
+            verifier_cfg: V::default(),
+            codec: DagCborCodec,
+            _data: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "dag_json")]
+impl<V: Verify + Default, T> Default for Varsig<V, DagJsonCodec, T>
+where
+    DagJsonCodec: Codec<T>,
+{
+    fn default() -> Self {
+        Varsig {
+            verifier_cfg: V::default(),
+            codec: DagJsonCodec,
+            _data: PhantomData,
+        }
     }
 }
 
@@ -193,7 +227,7 @@ impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::signature::Ed25519;
+    use crate::signature::eddsa::{Ed25519, EdDsa};
 
     use serde_ipld_dagcbor::codec::DagCborCodec;
     use testresult::TestResult;
@@ -204,20 +238,20 @@ mod tests {
         let dag_json = serde_ipld_dagcbor::to_vec(&input)?;
         let varsig: Varsig<Ed25519, DagCborCodec, String> =
             serde_ipld_dagcbor::from_slice(&dag_json)?;
-        assert_eq!(varsig, Varsig::new(Ed25519, DagCborCodec));
+        assert_eq!(varsig, Varsig::new(EdDsa::new(), DagCborCodec));
         Ok(())
     }
 
     #[test]
     fn test_verifier_reader() -> TestResult {
-        let varsig: Varsig<Ed25519, DagCborCodec, String> = Varsig::new(Ed25519, DagCborCodec);
-        assert_eq!(varsig.verifier_cfg(), &Ed25519);
+        let varsig: Varsig<Ed25519, DagCborCodec, String> = Varsig::new(EdDsa::new(), DagCborCodec);
+        assert_eq!(varsig.verifier_cfg(), &EdDsa::new());
         Ok(())
     }
 
     #[test]
     fn test_codec_reader() -> TestResult {
-        let varsig: Varsig<Ed25519, DagCborCodec, String> = Varsig::new(Ed25519, DagCborCodec);
+        let varsig: Varsig<Ed25519, DagCborCodec, String> = Varsig::new(EdDsa::new(), DagCborCodec);
         assert_eq!(varsig.codec(), &DagCborCodec);
         Ok(())
     }
@@ -237,7 +271,8 @@ mod tests {
 
         let mut csprng = rand::thread_rng();
         let sk = ed25519_dalek::SigningKey::generate(&mut csprng);
-        let varsig: Varsig<Ed25519, DagCborCodec, TestPayload> = Varsig::new(Ed25519, DagCborCodec);
+        let varsig: Varsig<Ed25519, DagCborCodec, TestPayload> =
+            Varsig::new(EdDsa::new(), DagCborCodec);
 
         let (sig, _encoded) = varsig.try_sign(&sk, &payload)?;
         varsig.try_verify(&sk.verifying_key(), &payload, &sig)?;

@@ -30,7 +30,10 @@
 <div align="center"><sub>:warning: Work in progress :warning:</sub></div>
 
 > [!NOTE]
-> This library conforms to UCAN v1.0.0-rc.1
+> These libraries conform to UCAN v1.0.0-rc.1
+
+> [!WARNING]
+> This code has not been formally audited. Use at your own risk!
 
 ## Usage
 
