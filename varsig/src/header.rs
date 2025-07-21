@@ -41,6 +41,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         &self.codec
     }
 
+    /// Try to synchronously sign a payload with the provided signing key.
     pub fn try_sign(
         &self,
         sk: &V::Signer,
@@ -54,6 +55,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         Ok(self.verifier_cfg.try_sign(&self.codec, &sk, payload)?)
     }
 
+    /// Try to asynchronously sign a payload with the provided signing key.
     pub async fn try_sign_async(
         &self,
         sk: &V::AsyncSigner,
@@ -191,7 +193,7 @@ impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{signature::Ed25519, signer::Sign};
+    use crate::signature::Ed25519;
 
     use serde_ipld_dagcbor::codec::DagCborCodec;
     use testresult::TestResult;

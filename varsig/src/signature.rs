@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     curve::{Edwards448, Secp256k1, Secp256r1},
-    hash::{Sha2_256, Sha2_512},
+    hash::{Multihasher, Sha2_256, Sha2_512},
     verify::Verify,
 };
 use std::marker::PhantomData;
@@ -26,23 +26,76 @@ pub type Es256 = EcDsa<Secp256r1, Sha2_256>;
 ///
 /// ECDSA with the P-256 (`secp256r1`) curve and SHA2-384 hash.
 #[cfg(feature = "sha2_384")]
-pub type Es384 = EcDsa<Secp256r1, Sha2_384>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Es384;
+
+#[cfg(feature = "sha2_384")]
+impl From<Es384> for EcDsa<Secp256r1, Sha2_384> {
+    fn from(_: Es384) -> Self {
+        EcDsa(PhantomData)
+    }
+}
+
+#[cfg(feature = "sha2_384")]
+impl From<EcDsa<Secp256r1, Sha2_384>> for Es384 {
+    fn from(_: EcDsa<Secp256r1, Sha2_384>) -> Self {
+        Es384
+    }
+}
 
 /// The ES512 signature algorithm.
 ///
 /// ECDSA with the P-256 (`secp256r1`) curve and SHA2-512 hash.
-pub type Es512 = EcDsa<Secp256r1, Sha2_512>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Es512;
+
+impl From<Es512> for EcDsa<Secp256r1, Sha2_512> {
+    fn from(_: Es512) -> Self {
+        EcDsa(PhantomData)
+    }
+}
+
+impl From<EcDsa<Secp256r1, Sha2_512>> for Es512 {
+    fn from(_: EcDsa<Secp256r1, Sha2_512>) -> Self {
+        Es512
+    }
+}
 
 /// The ES256K signature algorithm.
 ///
 /// ECDSA with the `secp256k1` curve and SHA2-256 hash.
-pub type Es256k = EcDsa<Secp256k1, Sha2_256>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Es256k;
+
+impl From<Es512> for EcDsa<Secp256k1, Sha2_512> {
+    fn from(_: Es512) -> Self {
+        EcDsa(PhantomData)
+    }
+}
+
+impl From<EcDsa<Secp256k1, Sha2_512>> for Es512 {
+    fn from(_: EcDsa<Secp256k1, Sha2_512>) -> Self {
+        Es512
+    }
+}
 
 /// The Ed25519 signature algorithm.
 ///
 /// The EdDSA signing algorithm with the Edwards25519 curve with SHA2-512 hashing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Ed25519;
+
+impl From<EdDsa<Edwards25519, Sha2_512>> for Ed25519 {
+    fn from(_: EdDsa<Edwards25519, Sha2_512>) -> Self {
+        Ed25519
+    }
+}
+
+impl From<Ed25519> for EdDsa<Edwards25519, Sha2_512> {
+    fn from(_: Ed25519) -> Self {
+        EdDsa(PhantomData)
+    }
+}
 
 impl Verify for Ed25519 {
     type Signature = ed25519_dalek::Signature;
@@ -122,25 +175,6 @@ pub struct G2;
 /// The BLS signature algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bls<PkCurve: BlsCurve, H: Multihasher>(PhantomData<(PkCurve, H)>);
-
-/// Multihash Prefix
-pub trait Multihasher {
-    /// Multihash tag for this hasher.
-    const MULTIHASH_TAG: u64;
-}
-
-impl Multihasher for Sha2_256 {
-    const MULTIHASH_TAG: u64 = 0x12;
-}
-
-#[cfg(feature = "sha2_384")]
-impl Multihasher for Sha2_384 {
-    const MULTIHASH_TAG: u64 = 0x15;
-}
-
-impl Multihasher for Sha2_512 {
-    const MULTIHASH_TAG: u64 = 0x13;
-}
 
 /// The RSA signature algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
