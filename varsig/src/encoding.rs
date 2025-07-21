@@ -82,16 +82,13 @@ impl<T: Serialize + for<'a> Deserialize<'a>> Codec<T> for Encoding {
     }
 
     /// Decode the payload from the given reader buffer.
-    fn decode_payload<R: BufRead>(&self, _reader: &mut R) -> Result<T, Self::DecodingError> {
+    fn decode_payload<R: BufRead>(&self, reader: &mut R) -> Result<T, Self::DecodingError> {
         match self {
             #[cfg(feature = "dag_cbor")]
-            Encoding::DagCbor => {
-                todo!("FIXME")
-                // Ok::<Ipld, Self::DecodingError>(serde_ipld_dagcbor::from_reader(reader)?)
-            }
+            Encoding::DagCbor => Ok(serde_ipld_dagcbor::from_reader(reader)?),
 
             #[cfg(feature = "dag_json")]
-            Encoding::DagJson => todo!("FIXME"), // Ok(serde_ipld_dagjson::from_reader(reader)?),
+            Encoding::DagJson => Ok(serde_ipld_dagjson::from_reader(reader)?),
 
             #[cfg(feature = "jwt")]
             Encoding::Jwt => todo!(),

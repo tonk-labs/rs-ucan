@@ -50,7 +50,7 @@ pub trait Verify: Sized {
     fn try_verify<T, C: Codec<T>>(
         &self,
         codec: &C,
-        verifier: &Self::Verifier, // e.g. public key
+        verifier: &Self::Verifier, // e.g. verifying ("public") key
         signature: &Self::Signature,
         payload: &T,
     ) -> Result<(), VerificationError<C::EncodingError>> {

@@ -5,7 +5,7 @@ use signature::Signer;
 use std::{error::Error, future::Future};
 use thiserror::Error;
 
-use crate::{codec::Codec, verify::Verify};
+use crate::{codec::Codec, signature::Ed25519, verify::Verify};
 
 /// Synchronous signing trait.
 pub trait Sign: Verify {
@@ -22,13 +22,21 @@ pub trait Sign: Verify {
         codec: &C,
         signer: &Self::Signer,
         payload: &T,
-    ) -> Result<Self::Signature, SignerError<C::EncodingError, Self::SignError>> {
+    ) -> Result<(Self::Signature, Vec<u8>), SignerError<C::EncodingError, Self::SignError>> {
         let mut buffer = Vec::new();
         codec
             .encode_payload(payload, &mut buffer)
             .map_err(SignerError::EncodingError)?;
-        signer.try_sign(&buffer).map_err(SignerError::SigningError)
+        let sig = signer
+            .try_sign(&buffer)
+            .map_err(SignerError::SigningError)?;
+        Ok((sig, buffer))
     }
+}
+
+impl Sign for Ed25519 {
+    type Signer = ed25519_dalek::SigningKey;
+    type SignError = signature::Error;
 }
 
 /// Asynchronous signing trait.
@@ -46,17 +54,22 @@ pub trait AsyncSign: Verify {
         codec: &C,
         signer: &Self::AsyncSigner,
         payload: &T,
-    ) -> impl Future<Output = Result<Self::Signature, SignerError<C::EncodingError, Self::AsyncSignError>>>
-    {
+    ) -> impl Future<
+        Output = Result<
+            (Self::Signature, Vec<u8>),
+            SignerError<C::EncodingError, Self::AsyncSignError>,
+        >,
+    > {
         async {
             let mut buffer = Vec::new();
             codec
                 .encode_payload(payload, &mut buffer)
                 .map_err(SignerError::EncodingError)?;
-            signer
+            let sig = signer
                 .sign_async(&buffer)
                 .await
-                .map_err(SignerError::SigningError)
+                .map_err(SignerError::SigningError)?;
+            Ok((sig, buffer))
         }
     }
 }
