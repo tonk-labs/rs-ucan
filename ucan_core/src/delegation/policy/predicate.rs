@@ -3,6 +3,7 @@
 use super::selector::{filter::Filter, select::Select, SelectorError};
 use crate::{collection::Collection, number::Number};
 use ipld_core::ipld::Ipld;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -51,6 +52,210 @@ pub enum Predicate {
     ///
     /// "For any element of a collection" (∃x ∈ xs) the predicate must hold
     Some(Select<Collection>, Box<Predicate>),
+}
+
+use serde::ser::SerializeTuple;
+
+impl Serialize for Predicate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Equal(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&"==")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::GreaterThan(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&">")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::GreaterThanOrEqual(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&">=")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::LessThan(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&"<")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::LessThanOrEqual(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&"<=")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::Like(lhs, rhs) => {
+                let mut triple = serializer.serialize_tuple(3)?;
+                triple.serialize_element(&"like")?;
+                triple.serialize_element(lhs)?;
+                triple.serialize_element(rhs)?;
+                triple.end()
+            }
+            Self::Not(inner) => {
+                let mut tuple = serializer.serialize_tuple(2)?;
+                tuple.serialize_element(&"not")?;
+                tuple.serialize_element(inner)?;
+                tuple.end()
+            }
+            Self::And(lhs, rhs) => {
+                let mut tuple = serializer.serialize_tuple(3)?;
+                tuple.serialize_element(&"and")?;
+                tuple.serialize_element(lhs)?;
+                tuple.serialize_element(rhs)?;
+                tuple.end()
+            }
+            Self::Or(lhs, rhs) => {
+                let mut tuple = serializer.serialize_tuple(3)?;
+                tuple.serialize_element(&"or")?;
+                tuple.serialize_element(lhs)?;
+                tuple.serialize_element(rhs)?;
+                tuple.end()
+            }
+            Self::Every(xs, p) => {
+                let mut tuple = serializer.serialize_tuple(3)?;
+                tuple.serialize_element(&"every")?;
+                tuple.serialize_element(xs)?;
+                tuple.serialize_element(p)?;
+                tuple.end()
+            }
+            Self::Some(xs, p) => {
+                let mut tuple = serializer.serialize_tuple(3)?;
+                tuple.serialize_element(&"some")?;
+                tuple.serialize_element(xs)?;
+                tuple.serialize_element(p)?;
+                tuple.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Predicate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+
+        struct PredicateVisitor;
+
+        impl<'de> Visitor<'de> for PredicateVisitor {
+            type Value = Predicate;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a predicate")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let op: String = seq.next_element()?.ok_or_else(|| {
+                    de::Error::invalid_length(0, &"expected a predicate operation")
+                })?;
+
+                match op.as_str() {
+                    "==" => Ok(Predicate::Equal(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected an Ipld value")
+                        })?,
+                    )),
+                    ">" => Ok(Predicate::GreaterThan(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a Number value")
+                        })?,
+                    )),
+                    ">=" => Ok(Predicate::GreaterThanOrEqual(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a Number value")
+                        })?,
+                    )),
+                    "<" => Ok(Predicate::LessThan(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a Number value")
+                        })?,
+                    )),
+                    "<=" => Ok(Predicate::LessThanOrEqual(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a Number value")
+                        })?,
+                    )),
+                    "like" => Ok(Predicate::Like(
+                        seq.next_element()?
+                            .ok_or_else(|| de::Error::invalid_length(1, &"expected a selector"))?,
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a String value")
+                        })?,
+                    )),
+                    "not" => Ok(Predicate::Not(Box::new(seq.next_element()?.ok_or_else(
+                        || de::Error::invalid_length(1, &"expected a predicate"),
+                    )?))),
+                    "and" => Ok(Predicate::And(
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(1, &"expected a predicate")
+                        })?),
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a predicate")
+                        })?),
+                    )),
+                    "or" => Ok(Predicate::Or(
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(1, &"expected a predicate")
+                        })?),
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a predicate")
+                        })?),
+                    )),
+                    "every" => Ok(Predicate::Every(
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(1, &"expected a collection selector")
+                        })?,
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a predicate")
+                        })?),
+                    )),
+                    "some" => Ok(Predicate::Some(
+                        seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(1, &"expected a collection selector")
+                        })?,
+                        Box::new(seq.next_element()?.ok_or_else(|| {
+                            de::Error::invalid_length(2, &"expected a predicate")
+                        })?),
+                    )),
+                    _ => Err(de::Error::unknown_variant(
+                        &op,
+                        &[
+                            "==", ">", ">=", "<", "<=", "like", "not", "and", "or", "every", "some",
+                        ],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_seq(PredicateVisitor)
+    }
 }
 
 #[cfg(any(test, feature = "test_utils"))]

@@ -4,7 +4,7 @@
 
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, hash::Hash};
 
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::Arbitrary;
@@ -126,6 +126,15 @@ impl TryFrom<Ipld> for Nonce {
             }
         } else {
             Err(())
+        }
+    }
+}
+
+impl Hash for Nonce {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Nonce::Nonce16(nonce) => nonce.to_vec().hash(state),
+            Nonce::Custom(nonce) => nonce.hash(state),
         }
     }
 }

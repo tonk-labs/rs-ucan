@@ -22,7 +22,7 @@ use arbitrary::{self, Arbitrary, Unstructured};
 /// the public API.
 ///
 /// [IEEE-754]: https://en.wikipedia.org/wiki/IEEE_754
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(SystemTime);
 
 impl Timestamp {

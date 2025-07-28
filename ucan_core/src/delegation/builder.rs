@@ -263,8 +263,8 @@ impl<D: Did> DelegationBuilder<D, D, D, DelegatedSubject<D>, Vec<String>> {
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn build(self) -> super::Delegation<D> {
-        super::Delegation {
+    pub fn build(self) -> super::DelegationPayload<D> {
+        super::DelegationPayload {
             issuer: self.issuer,
             audience: self.audience,
             subject: self.subject,

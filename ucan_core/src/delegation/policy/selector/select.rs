@@ -3,6 +3,7 @@
 use super::Selector;
 use super::{error::SelectorErrorReason, filter::Filter, Selectable, SelectorError};
 use ipld_core::ipld::Ipld;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
@@ -16,6 +17,25 @@ use arbitrary::{self, Arbitrary, Unstructured};
 pub struct Select<T> {
     filters: Vec<Filter>,
     _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> Serialize for Select<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Selector(self.filters.clone()).serialize(serializer)
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Select<T>
+where
+    Ipld: From<T>,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let selector = Selector::deserialize(deserializer).map_err(serde::de::Error::custom)?;
+        Ok(Select {
+            filters: selector.0,
+            _marker: std::marker::PhantomData,
+        })
+    }
 }
 
 impl<T> fmt::Debug for Select<T> {

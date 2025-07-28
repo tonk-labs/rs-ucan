@@ -15,17 +15,42 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use varsig::verify::Verify;
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-// #[serde(transparent)]
-// pub struct Dgtn<V: Verify, D: Did>(Envelope<V, Delegation<D>, <V as Verify>::Signature>);
+#[derive(Clone)]
+pub struct Delegation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
+    Envelope<V, DelegationPayload<D>, <V as Verify>::Signature>,
+);
+
+impl<V: Verify + Serialize, D: Did + Serialize + for<'de> Deserialize<'de>> Serialize
+    for Delegation<V, D>
+where
+    <V as Verify>::Signature: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de, V: Verify + Deserialize<'de>, I: Did + Serialize + for<'ze> Deserialize<'ze>>
+    Deserialize<'de> for Delegation<V, I>
+where
+    <V as Verify>::Signature: for<'xe> Deserialize<'xe>,
+{
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
+        Ok(Delegation(envelope))
+    }
+}
 
 // FIXME tag the spec and link to taht instead
 /// UCAN Delegation
 ///
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
-#[derive(Debug, Clone, PartialEq)]
-pub struct Delegation<D: Did> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DelegationPayload<D: Did> {
     pub(crate) issuer: D,
     pub(crate) audience: D,
 
@@ -40,7 +65,7 @@ pub struct Delegation<D: Did> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Did> Delegation<D> {
+impl<D: Did> DelegationPayload<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {

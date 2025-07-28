@@ -1,7 +1,7 @@
 //! Top-level Varsig envelope.
 
 use serde::{
-    de::{self, Deserializer, IntoDeserializer, MapAccess, Visitor},
+    de::{self, Deserializer, IntoDeserializer, MapAccess, SeqAccess, Visitor},
     {ser::SerializeMap, Deserialize, Serialize},
 };
 use serde_ipld_dagcbor::codec::DagCborCodec;
@@ -10,11 +10,10 @@ use std::{collections::BTreeMap, fmt, marker::PhantomData};
 use varsig::{header::Varsig, verify::Verify};
 
 /// Top-level Varsig envelope type.
-#[derive(Debug, Serialize)]
-#[serde(deny_unknown_fields)] // NOTE: important!
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Envelope<
     V: Verify<Signature = S>,
-    T: Serialize + for<'de> Deserialize<'de>,
+    T: Serialize + for<'ze> Deserialize<'ze>,
     S: SignatureEncoding,
 >(
     /// Envelope signature.
@@ -23,8 +22,66 @@ pub struct Envelope<
     pub EnvelopePayload<V, T>,
 );
 
+impl<
+        'de,
+        V: Verify<Signature = S>,
+        T: Serialize + for<'ze> Deserialize<'ze>,
+        S: SignatureEncoding,
+    > Deserialize<'de> for Envelope<V, T, S>
+where
+    S: for<'ze> Deserialize<'ze>,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct EnvelopeVisitor<V, T, S>
+        where
+            V: Verify<Signature = S>,
+            T: Serialize + for<'ze> Deserialize<'ze>,
+            S: SignatureEncoding,
+        {
+            marker: std::marker::PhantomData<(V, T, S)>,
+        }
+
+        impl<'de, V, T, S> Visitor<'de> for EnvelopeVisitor<V, T, S>
+        where
+            V: Verify<Signature = S>,
+            T: Serialize + for<'ze> Deserialize<'ze>,
+            S: SignatureEncoding + Deserialize<'de>,
+        {
+            type Value = Envelope<V, T, S>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a 2-element sequence [signature, payload]")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let signature: S = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+
+                let payload: EnvelopePayload<V, T> = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+
+                // FIXME prevent extra fields
+
+                Ok(Envelope(signature, payload))
+            }
+        }
+
+        deserializer.deserialize_tuple(
+            2,
+            EnvelopeVisitor {
+                marker: std::marker::PhantomData,
+            },
+        )
+    }
+}
+
 /// Inner Varsig envelope payload type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnvelopePayload<V: Verify, T: Serialize + for<'de> Deserialize<'de>> {
     /// Varsig header.
     pub header: Varsig<V, DagCborCodec, T>,
@@ -66,7 +123,7 @@ where
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "kebab-case")]
+        #[serde(field_identifier)]
         enum Field {
             Header,
             Payload(serde_value::Value),
