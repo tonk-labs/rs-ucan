@@ -5,11 +5,19 @@ pub mod policy;
 pub mod subject;
 
 use self::subject::DelegatedSubject;
-use crate::{crypto::nonce::Nonce, did::Did, time::timestamp::Timestamp, unset::Unset};
+use crate::{
+    crypto::nonce::Nonce, did::Did, envelope::Envelope, time::timestamp::Timestamp, unset::Unset,
+};
 use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use varsig::verify::Verify;
+
+// #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+// #[serde(transparent)]
+// pub struct Dgtn<V: Verify, D: Did>(Envelope<V, Delegation<D>, <V as Verify>::Signature>);
 
 // FIXME tag the spec and link to taht instead
 /// UCAN Delegation

@@ -30,6 +30,7 @@ pub mod collection;
 pub mod crypto;
 pub mod delegation;
 pub mod did;
+pub mod envelope;
 pub mod invocation;
 pub mod number;
 pub mod promise;

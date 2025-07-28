@@ -1,10 +1,14 @@
 //! EdDSA signature algorithms.
 
-use crate::{curve::Edwards25519, hash::Sha2_512, signature::Multihasher, verify::Verify};
+use crate::{
+    curve::Edwards25519,
+    hash::{Multihasher, Sha2_512},
+    verify::Verify,
+};
 use std::marker::PhantomData;
 
 /// The `EdDSA` signature algorithm.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EdDsa<C: EdDsaCurve, H: Multihasher>(PhantomData<(C, H)>);
 
 impl<C: EdDsaCurve, H: Multihasher> EdDsa<C, H> {
@@ -24,7 +28,7 @@ impl EdDsaCurve for Edwards25519 {}
 /// The Ed25519 signature algorithm.
 ///
 /// The EdDSA signing algorithm with the Edwards25519 curve with SHA2-512 hashing.
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
 pub type Ed25519 = EdDsa<Edwards25519, Sha2_512>;
 
 impl Verify for Ed25519 {

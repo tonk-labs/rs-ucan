@@ -31,7 +31,7 @@
 //!
 //! // Signing the payload with enforced Ed25519 and DAG-CBOR
 //! let sk = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-//! let (sig, dag_cbor) = varsig.try_sign(&sk, &payload).unwrap();
+//! let (sig, _) = varsig.try_sign(&sk, &payload).unwrap();
 //! varsig.try_verify(&sk.verifying_key(), &payload, &sig).unwrap();
 //! ```
 
@@ -64,7 +64,6 @@
 pub mod codec;
 pub mod curve;
 pub mod encoding;
-pub mod envelope;
 pub mod hash;
 pub mod header;
 pub mod signature;

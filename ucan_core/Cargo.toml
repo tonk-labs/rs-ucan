@@ -22,9 +22,12 @@ nonempty.workspace = true
 proptest = { workspace = true, optional = true }
 proptest-arbitrary-interop = { workspace = true, optional = true }
 serde.workspace = true
+serde-value = "0.7"
+serde_ipld_dagcbor.workspace = true
 signature.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+varsig = { path = "../varsig" }
 
 [dev-dependencies]
 pretty_assertions.workspace = true

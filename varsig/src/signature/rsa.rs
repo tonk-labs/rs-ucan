@@ -1,8 +1,5 @@
 //! RSA signature algorithm configuration.
 
-use crate::{hash::Sha2_256, signature::Multihasher, verify::Verify};
-use std::marker::PhantomData;
-
 /// The RSA signature algorithm.
 ///
 /// The `const L` type parameter represents the key length in bytes.
