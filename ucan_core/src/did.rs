@@ -1,15 +1,19 @@
 //! Decentralized Identifier (DID) helpers.
 
-use signature::{SignatureEncoding, Signer, Verifier};
 use std::{fmt::Debug, str::FromStr};
+use varsig::{signer::Sign, verify::Verify};
 
 /// A trait for [DID]s.
 ///
 /// [DID]: https://en.wikipedia.org/wiki/Decentralized_identifier
-pub trait Did: PartialEq + ToString + FromStr + Verifier<Self::Signature> {
-    /// The signature type for the DID
-    type Signature: SignatureEncoding + PartialEq + Debug;
+pub trait Did: PartialEq + ToString + FromStr + Verify {
+    fn did_method(&self) -> &str;
+}
 
-    /// The associated signer (referenced or owned signing key for the DID)
-    type Signer: Signer<Self::Signature> + Debug;
+// FIXME rename issuer?
+pub trait DidSigner: Sign + Debug {
+    type Did: Did;
+
+    fn did(&self) -> &Self::Did;
+    fn signer(&self) -> &Self::Signer;
 }

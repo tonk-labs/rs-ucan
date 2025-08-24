@@ -3,19 +3,23 @@
 use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
     crypto::nonce::Nonce,
-    did::Did,
-    sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset},
+    did::{Did, DidSigner},
+    envelope::{Envelope, EnvelopePayload},
+    sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset, DidSignerOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::ipld::Ipld;
+use serde::{Deserialize, Serialize};
+use serde_ipld_dagcbor::{codec::DagCborCodec, error::CodecError};
 use std::{collections::BTreeMap, marker::PhantomData};
+use varsig::{signer::SignerError, Varsig};
 
 /// Typesafe builder for [`Delegation`].
 #[derive(Default, Debug, Clone)]
 pub struct DelegationBuilder<
     D: Did,
-    Issuer: DidOrUnset = Unset,
+    Issuer: DidSignerOrUnset = Unset,
     Audience: DidOrUnset = Unset,
     Subject: DelegatedSubjectOrUnset = Unset,
     Command: CommandOrUnset = Unset,
@@ -73,7 +77,7 @@ impl<D: Did> DelegationBuilder<D> {
 
 impl<
         D: Did,
-        Issuer: DidOrUnset,
+        Issuer: DidSignerOrUnset,
         Audience: DidOrUnset,
         Subject: DelegatedSubjectOrUnset,
         Command: CommandOrUnset,
@@ -81,7 +85,10 @@ impl<
 {
     /// Sets the `issuer` field of the delegation.
     #[must_use]
-    pub fn issuer(self, issuer: D) -> DelegationBuilder<D, D, Audience, Subject, Command> {
+    pub fn issuer<I: DidSigner<Did = D>>(
+        self,
+        issuer: I,
+    ) -> DelegationBuilder<D, I, Audience, Subject, Command> {
         DelegationBuilder {
             issuer,
             audience: self.audience,
@@ -252,7 +259,9 @@ impl<
 }
 
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: Did> DelegationBuilder<D, D, D, DelegatedSubject<D>, Vec<String>> {
+impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<Did = D>>
+    DelegationBuilder<D, Issuer, D, DelegatedSubject<D>, Vec<String>>
+{
     /// Builds the [`Delegation`] instance from the builder.
     ///
     /// This is typesafe, and only possible to call when all required fields are set.
@@ -263,9 +272,9 @@ impl<D: Did> DelegationBuilder<D, D, D, DelegatedSubject<D>, Vec<String>> {
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn build(self) -> super::DelegationPayload<D> {
+    pub fn build_payload(self) -> super::DelegationPayload<D> {
         super::DelegationPayload {
-            issuer: self.issuer,
+            issuer: self.issuer.did().clone(),
             audience: self.audience,
             subject: self.subject,
             command: self.command,
@@ -279,7 +288,34 @@ impl<D: Did> DelegationBuilder<D, D, D, DelegatedSubject<D>, Vec<String>> {
         }
     }
 
-    // pub fn try_sign(self) -> Signed<Delegation> {
-    //     todo!()
-    // }
+    #[allow(clippy::expect_used)]
+    pub fn try_build(
+        self,
+    ) -> Result<super::Delegation<Issuer, D>, SignerError<CodecError, Issuer::SignError>> {
+        let payload: super::DelegationPayload<D> = super::DelegationPayload {
+            issuer: self.issuer.did().clone(),
+            audience: self.audience,
+            subject: self.subject,
+            command: self.command,
+            policy: self.policy,
+            expiration: self.expiration,
+            not_before: self.not_before,
+            meta: self.meta,
+            nonce: self
+                .nonce
+                .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
+        };
+
+        let (sig, _) = self
+            .issuer
+            .try_sign(&DagCborCodec, &self.issuer.signer(), &payload)?;
+
+        let header: Varsig<Issuer, DagCborCodec, super::DelegationPayload<D>> =
+            Varsig::new(self.issuer, DagCborCodec);
+
+        Ok(super::Delegation(Envelope(
+            sig,
+            EnvelopePayload { header, payload },
+        )))
+    }
 }
