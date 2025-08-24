@@ -3,16 +3,60 @@
 pub mod builder;
 
 use self::builder::InvocationBuilder;
-use crate::{crypto::nonce::Nonce, did::Did, promise::Promised, time::timestamp::Timestamp};
+use crate::{
+    crypto::nonce::Nonce, did::Did, envelope::Envelope, promise::Promised,
+    time::timestamp::Timestamp,
+};
 use ipld_core::{cid::Cid, ipld::Ipld};
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, fmt::Debug};
+use varsig::verify::Verify;
+
+#[derive(Clone)]
+pub struct Invocation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
+    Envelope<V, InvocationPayload<D>, <V as Verify>::Signature>,
+);
+
+impl<V: Verify + Debug, D: Did + Serialize + for<'de> Deserialize<'de> + Debug> Debug
+    for Invocation<V, D>
+where
+    <V as Verify>::Signature: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Invocation").field(&self.0).finish()
+    }
+}
+
+impl<V: Verify + Serialize, D: Did + Serialize + for<'de> Deserialize<'de>> Serialize
+    for Invocation<V, D>
+where
+    <V as Verify>::Signature: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de, V: Verify + Deserialize<'de>, I: Did + Serialize + for<'ze> Deserialize<'ze>>
+    Deserialize<'de> for Invocation<V, I>
+where
+    <V as Verify>::Signature: for<'xe> Deserialize<'xe>,
+{
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
+        Ok(Invocation(envelope))
+    }
+}
 
 /// UCAN Invocation
 ///
 /// Invoke a UCAN capability. This type implements the
 /// [UCAN Invocation spec](https://github.com/ucan-wg/invocation/README.md).
-#[derive(Debug, Clone, PartialEq)]
-pub struct Invocation<D: Did> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InvocationPayload<D: Did> {
     pub(crate) issuer: D,
     pub(crate) audience: D,
 
@@ -30,7 +74,7 @@ pub struct Invocation<D: Did> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Did> Invocation<D> {
+impl<D: Did> InvocationPayload<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn builder() -> InvocationBuilder<D> {

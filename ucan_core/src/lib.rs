@@ -42,3 +42,6 @@ pub mod unset;
 // Internal modules
 mod ipld;
 mod sealed;
+
+pub use delegation::{builder::DelegationBuilder, Delegation};
+pub use invocation::{builder::InvocationBuilder, Invocation};

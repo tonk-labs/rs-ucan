@@ -1,4 +1,4 @@
-//! Typesafe builder for [`Invocation`].
+//! Typesafe builder for [`InvocationPayload`].
 
 use crate::{
     crypto::nonce::Nonce,
@@ -333,8 +333,8 @@ impl<D: Did> InvocationBuilder<D, D, D, D, Vec<String>, Vec<Cid>> {
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn build(self) -> super::Invocation<D> {
-        super::Invocation {
+    pub fn build(self) -> super::InvocationPayload<D> {
+        super::InvocationPayload {
             issuer: self.issuer,
             audience: self.audience,
             subject: self.subject,

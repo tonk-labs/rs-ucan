@@ -12,13 +12,23 @@ use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Debug};
 use varsig::verify::Verify;
 
 #[derive(Clone)]
 pub struct Delegation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
     Envelope<V, DelegationPayload<D>, <V as Verify>::Signature>,
 );
+
+impl<V: Verify + Debug, D: Did + Serialize + for<'de> Deserialize<'de> + Debug> Debug
+    for Delegation<V, D>
+where
+    <V as Verify>::Signature: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Delegation").field(&self.0).finish()
+    }
+}
 
 impl<V: Verify + Serialize, D: Did + Serialize + for<'de> Deserialize<'de>> Serialize
     for Delegation<V, D>
