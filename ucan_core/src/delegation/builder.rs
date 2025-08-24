@@ -262,7 +262,7 @@ impl<
 impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<Did = D>>
     DelegationBuilder<D, Issuer, D, DelegatedSubject<D>, Vec<String>>
 {
-    /// Builds the [`Delegation`] instance from the builder.
+    /// Builds an (unsigned) [`DelegationPayload`].
     ///
     /// This is typesafe, and only possible to call when all required fields are set.
     ///
@@ -288,6 +288,17 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
         }
     }
 
+    /// Builds the complete, signed [`Delegation`].
+    ///
+    /// # Errors
+    ///
+    /// * `SignerError` if signing the delegation fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if random number generator fails when generating a nonce.
+    /// This will never happen if a nonce is provided, and is not recoverable
+    /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
     pub fn try_build(
         self,
