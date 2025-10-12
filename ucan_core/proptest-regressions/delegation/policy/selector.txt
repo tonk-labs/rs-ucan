@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 26af0c7e7a187e0df78ba457bf389acc5167e980afeb72c5ce553f59ee439daf # shrinks to sel = Selector([Values, Try(Try(ArrayIndex(0)))])

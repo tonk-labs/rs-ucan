@@ -380,14 +380,16 @@ impl<'a> Arbitrary<'a> for Filter {
 mod tests {
     use super::*;
     use pretty_assertions as pretty;
+    use proptest_arbitrary_interop::arb;
     use testresult::TestResult;
 
     mod serialization {
         use super::*;
+        use proptest::prelude::*;
 
         proptest! {
             #[test]
-            fn test_filter_round_trip(filter: Filter) {
+            fn test_filter_round_trip(filter in arb::<Filter>()) {
                 let serialized = filter.to_string();
                 let deserialized = serialized.parse();
                 prop_assert_eq!(Ok(filter), deserialized);
@@ -630,10 +632,10 @@ mod tests {
         #[test_log::test]
         fn test_parse_many0_multiple_tries_after_dot_field() -> TestResult {
             pretty::assert_eq!(
-                nom::multi::many0(parse)(".foo???????????????????abc"),
+                parse(".foo???????????????????abc"),
                 Ok((
                     "abc",
-                    vec![Filter::Try(Box::new(Filter::Field("foo".to_string())))]
+                    Filter::Try(Box::new(Filter::Field("foo".to_string())))
                 ))
             );
             Ok(())

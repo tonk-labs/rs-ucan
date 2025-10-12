@@ -8,8 +8,10 @@
 use ipld_core::{cid::Cid, ipld::Ipld};
 use std::collections::BTreeMap;
 
+use crate::delegation::policy::selector::{error::SelectorErrorReason, selectable::Selectable};
+
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(any(test, feature = "test_utils"), derive(arbitrary::Arbitrary))]
+#[cfg_attr(any(test, feature = "arb"), derive(arbitrary::Arbitrary))]
 pub enum InternalIpld {
     /// Represents the absence of a value or the value undefined.
     Null,
@@ -69,5 +71,11 @@ impl From<Ipld> for InternalIpld {
             }
             Ipld::Link(cid) => InternalIpld::Link(cid),
         }
+    }
+}
+
+impl Selectable for InternalIpld {
+    fn try_select(ipld: Ipld) -> Result<Self, SelectorErrorReason> {
+        Ok(InternalIpld::from(ipld))
     }
 }

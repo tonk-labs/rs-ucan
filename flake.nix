@@ -41,7 +41,7 @@
 
         rustVersion = "1.86.0";
 
-        rust-toolchain = unstable.rust-bin.stable.${rustVersion}.default.override {
+        rust-toolchain = pkgs.rust-bin.stable.${rustVersion}.default.override {
           extensions = [
             "cargo"
             "clippy"
@@ -68,12 +68,6 @@
           taplo
         ];
 
-        #  darwin-installs = with pkgs.darwin.apple_sdk.frameworks; [
-        #    Security
-        #    CoreFoundation
-        #    Foundation
-        #  ];
-
         cargo-installs = with pkgs; [
           cargo-criterion
           cargo-deny
@@ -90,7 +84,7 @@
           wasm-tools
         ];
 
-        cargo = "${unstable.cargo}/bin/cargo";
+        cargo = "${pkgs.cargo}/bin/cargo";
         # gzip = "${pkgs.gzip}/bin/gzip";
         # node = "${pkgs.nodejs_22}/bin/node";
         # pnpm = "${pkgs.pnpm}/bin/pnpm";
@@ -234,7 +228,7 @@
               command_menu
 
               rust-toolchain
-              unstable.irust
+              pkgs.irust
 
               # http-server
               # pkgs.binaryen
@@ -242,23 +236,15 @@
               # pkgs.nodePackages.pnpm
               # pkgs.nodePackages_latest.webpack-cli
               # pkgs.nodejs_22
-              unstable.rust-analyzer
+              pkgs.rust-analyzer
               # pkgs.wasm-pack
             ]
             ++ format-pkgs
             ++ cargo-installs;
-            # ++ lib.optionals stdenv.isDarwin darwin-installs;
 
          shellHook = ''
             # export RUSTC_WRAPPER="${pkgs.sccache}/bin/sccache"
             unset SOURCE_DATE_EPOCH
-          ''
-          + pkgs.lib.strings.optionalString pkgs.stdenv.isDarwin ''
-            # See https://github.com/nextest-rs/nextest/issues/267
-            export DYLD_FALLBACK_LIBRARY_PATH="$(rustc --print sysroot)/lib"
-            export NIX_LDFLAGS="-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -framework CoreFoundation $NIX_LDFLAGS";
-          ''
-          + ''
             menu
           '';
         };

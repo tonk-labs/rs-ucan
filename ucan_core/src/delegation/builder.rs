@@ -15,7 +15,7 @@ use serde_ipld_dagcbor::{codec::DagCborCodec, error::CodecError};
 use std::{collections::BTreeMap, marker::PhantomData};
 use varsig::{signer::SignerError, Varsig};
 
-/// Typesafe builder for [`Delegation`].
+/// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
 pub struct DelegationBuilder<
     D: Did,
@@ -272,7 +272,7 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn build_payload(self) -> super::DelegationPayload<D> {
+    pub fn into_payload(self) -> super::DelegationPayload<D> {
         super::DelegationPayload {
             issuer: self.issuer.did().clone(),
             audience: self.audience,

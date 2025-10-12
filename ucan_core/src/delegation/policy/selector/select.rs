@@ -1,12 +1,9 @@
 //! Typesafe selection on [`Ipld`] values.
 
-use super::Selector;
-use super::{error::SelectorErrorReason, filter::Filter, Selectable, SelectorError};
+use super::{error::SelectorErrorReason, filter::Filter, Selectable, Selector, SelectorError};
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::cmp::Ordering;
-use std::fmt;
-use std::str::FromStr;
+use std::{cmp::Ordering, fmt, str::FromStr};
 use thiserror::Error;
 
 #[cfg(any(test, feature = "test_utils"))]
@@ -241,12 +238,12 @@ impl<'a, T> Arbitrary<'a> for Select<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipld;
-    use pretty_assertions as pretty;
-    use testresult::TestResult;
+    use crate::ipld::InternalIpld;
 
     mod get {
         use super::*;
+        use proptest::prelude::*;
+        use proptest_arbitrary_interop::arb;
 
         fn nested_data() -> Ipld {
             Ipld::Map(
@@ -268,15 +265,15 @@ mod tests {
 
         proptest! {
             #[test_log::test]
-            fn test_identity(data: ipld::Newtype) {
-                let selector = Select::<ipld::Newtype>::from_str(".")?;
-                prop_assert_eq!(selector.get(&data.0)?, data);
+            fn test_identity(data in arb::<InternalIpld>()) {
+                let selector = Select::<InternalIpld>::from_str(".")?;
+                prop_assert_eq!(selector.get(&data.clone().into())?, data.into());
             }
 
             #[test_log::test]
-            fn test_try_missing_is_null(data: ipld::Newtype) {
+            fn test_try_missing_is_null(data in arb::<InternalIpld>()) {
                 let selector = Select::<Ipld>::from_str(".foo?")?;
-                let cleaned_data = match data.0.clone() {
+                let cleaned_data = match Ipld::from(data).clone() {
                     Ipld::Map(mut m) => {
                         m.remove("foo").map_or(Ipld::Null, |v| v)
                     }
@@ -286,13 +283,13 @@ mod tests {
             }
 
             #[test_log::test]
-            fn test_try_missing_plus_trailing_is_null(data: ipld::Newtype, more: Vec<Filter>) {
+            fn test_try_missing_plus_trailing_is_null(data in arb::<InternalIpld>(), more in arb::<Vec<Filter>>()) {
                 let mut filters = vec![Filter::Try(Box::new(Filter::Field("foo".into())))];
                 filters.append(&mut more.clone());
 
                 let selector: Select<Ipld> = Select::new(filters);
 
-                let cleaned_data = match data.0.clone() {
+                let cleaned_data = match Ipld::from(data).clone() {
                     Ipld::Map(mut m) => {
                         m.remove("foo").map_or(Ipld::Null, |v| v)
                     }

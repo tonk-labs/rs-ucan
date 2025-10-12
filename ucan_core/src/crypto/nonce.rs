@@ -141,12 +141,14 @@ impl Hash for Nonce {
 
 #[cfg(test)]
 mod test {
+    use testresult::TestResult;
+
     use super::*;
 
     // FIXME prop test with lots of inputs
     #[test]
-    fn ipld_roundtrip_16() {
-        let gen = Nonce::generate_16();
+    fn ipld_roundtrip_16() -> TestResult {
+        let gen = Nonce::generate_16()?;
         let ipld = Ipld::from(gen.clone());
 
         let inner = if let Nonce::Nonce16(nonce) = gen {
@@ -157,6 +159,8 @@ mod test {
 
         assert_eq!(ipld, inner);
         assert_eq!(gen, ipld.try_into().unwrap());
+
+        Ok(())
     }
 
     // FIXME prop test with lots of inputs
