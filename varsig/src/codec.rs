@@ -82,13 +82,16 @@ impl<T: Serialize + for<'de> Deserialize<'de>> Codec<T> for DagCborCodec {
     }
 
     fn try_from_tags(code: &[u64]) -> Option<Self> {
+        dbg!(code);
+
         if code.is_empty() {
             return None;
         }
 
-        if code.len() > 1 {
-            return None;
-        }
+        // FIXME
+        // if code.len() > 1 {
+        //     return None;
+        // }
 
         if code[0] == <DagCborCodec as IpldCodec<T>>::CODE {
             Some(DagCborCodec)

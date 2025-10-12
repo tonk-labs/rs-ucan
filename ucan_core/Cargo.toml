@@ -14,14 +14,17 @@ version.workspace = true
 
 [dependencies]
 arbitrary = { workspace = true, optional = true }
+base58 = "0.2.0"
 ed25519-dalek = "2.2"
 getrandom.workspace = true
+leb128 = "0.2.5"
 ipld-core.workspace = true
 nom-unicode.workspace = true
 nom.workspace = true
 nonempty.workspace = true
 proptest = { workspace = true, optional = true }
 proptest-arbitrary-interop = { workspace = true, optional = true }
+serde_bytes = "0.11.19"
 serde-value = "0.7"
 serde.workspace = true
 serde_ipld_dagcbor.workspace = true
@@ -32,9 +35,11 @@ varsig = { path = "../varsig" }
 
 [dev-dependencies]
 arbitrary = { workspace = true, optional = false }
+base64 = "0.22.1"
 pretty_assertions.workspace = true
 proptest = { workspace = true, optional = false }
 proptest-arbitrary-interop = "0.1.0"
+serde_json = "1.0"
 test-log.workspace = true
 testresult.workspace = true
 

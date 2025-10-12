@@ -26,6 +26,6 @@ impl CommandOrUnset for Unset {}
 impl CommandOrUnset for Vec<String> {}
 
 #[doc(hidden)]
-pub trait ProofsOrUnset {}
+pub(crate) trait ProofsOrUnset {}
 impl ProofsOrUnset for Unset {}
 impl ProofsOrUnset for Vec<Cid> {}

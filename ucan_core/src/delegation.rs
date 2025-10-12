@@ -111,7 +111,7 @@ where
 ///
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DelegationPayload<D: Did> {
     pub(crate) issuer: D,
     pub(crate) audience: D,
@@ -126,6 +126,270 @@ pub struct DelegationPayload<D: Did> {
     pub(crate) meta: BTreeMap<String, Ipld>,
     pub(crate) nonce: Nonce,
 }
+use core::fmt;
+use serde::de::{self, Deserializer, MapAccess, Visitor};
+use std::marker::PhantomData;
+
+impl<'de, T> Deserialize<'de> for DelegationPayload<T>
+where
+    T: Did + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Map field names to an enum for efficient matching
+        #[derive(Debug, Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Issuer,
+            Audience,
+            Subject,
+            Command,
+            Policy,
+            Expiration,
+            NotBefore,
+            Meta,
+            Nonce,
+            #[serde(other)]
+            Unknown,
+        }
+
+        struct DelegationPayloadVisitor<T>(PhantomData<T>);
+
+        impl<'de, T> Visitor<'de> for DelegationPayloadVisitor<T>
+        where
+            T: Did + Deserialize<'de>,
+        {
+            type Value = DelegationPayload<T>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(r#"a map containing "issuer", "audience", "subject", …"#)
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                // Option<> while parsing; we’ll validate at the end.
+                let mut issuer: Option<T> = None;
+                let mut audience: Option<T> = None;
+                let mut subject: Option<DelegatedSubject<T>> = None;
+                let mut command: Option<Vec<String>> = None;
+                let mut policy: Option<Vec<Predicate>> = None;
+                let mut expiration: Option<Option<Timestamp>> = None;
+                let mut not_before: Option<Option<Timestamp>> = None;
+                let mut meta: Option<BTreeMap<String, Ipld>> = None;
+                let mut nonce: Option<Nonce> = None;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    dbg!(&key);
+                    match key {
+                        "iss" => {
+                            if issuer.is_some() {
+                                return Err(de::Error::duplicate_field("issuer"));
+                            }
+                            issuer = Some(map.next_value()?);
+                        }
+                        "aud" => {
+                            if audience.is_some() {
+                                return Err(de::Error::duplicate_field("audience"));
+                            }
+                            audience = Some(map.next_value()?);
+                        }
+                        "sub" => {
+                            if subject.is_some() {
+                                return Err(de::Error::duplicate_field("subject"));
+                            }
+                            subject = Some(map.next_value()?);
+                        }
+                        "cmd" => {
+                            if command.is_some() {
+                                return Err(de::Error::duplicate_field("command"));
+                            }
+                            let txt: &str = map.next_value()?;
+                            let cmd: Vec<String> = txt.split('/').map(|c| c.to_string()).collect();
+                            command = Some(cmd);
+                        }
+                        "pol" => {
+                            if policy.is_some() {
+                                return Err(de::Error::duplicate_field("policy"));
+                            }
+                            policy = Some(map.next_value()?);
+                        }
+                        "exp" => {
+                            if expiration.is_some() {
+                                return Err(de::Error::duplicate_field("expiration"));
+                            }
+                            expiration = Some(map.next_value()?);
+                        }
+                        "nbf" => {
+                            if not_before.is_some() {
+                                return Err(de::Error::duplicate_field("not_before"));
+                            }
+                            not_before = Some(map.next_value()?);
+                        }
+                        "meta" => {
+                            if meta.is_some() {
+                                return Err(de::Error::duplicate_field("meta"));
+                            }
+                            meta = Some(map.next_value()?);
+                        }
+                        "nonce" => {
+                            if nonce.is_some() {
+                                return Err(de::Error::duplicate_field("nonce"));
+                            }
+                            let ipld: Ipld = map.next_value()?;
+                            if let Ipld::Bytes(nnc) = ipld {
+                                nonce = Some(Nonce::from(nnc));
+                            } else {
+                                return Err(de::Error::custom("nonce field is not a byte array"));
+                            }
+                        }
+                        _ => {
+                            // Skip unknowns for forward-compat
+                            let _: de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                // Required fields
+                let issuer = issuer.ok_or_else(|| de::Error::missing_field("issuer"))?;
+                let audience = audience.ok_or_else(|| de::Error::missing_field("audience"))?;
+                let subject = subject.ok_or_else(|| de::Error::missing_field("subject"))?;
+
+                Ok(DelegationPayload {
+                    issuer,
+                    audience,
+                    subject,
+                    command: command.unwrap_or_default(),
+                    policy: policy.unwrap_or_default(),
+                    expiration: expiration.unwrap_or(None),
+                    not_before: not_before.unwrap_or(None),
+                    meta: meta.unwrap_or_default(),
+                    nonce: nonce.expect("FIXME"),
+                })
+            }
+        }
+
+        deserializer.deserialize_map(DelegationPayloadVisitor::<T>(PhantomData))
+    }
+}
+
+// impl<'de, T: Did + for <'ze> Deserialize<'ze>> Deserialize<'de> for DelegationPayload<T>
+// {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//         D: Deserializer<'de>,
+//     {
+//         struct DelegationPayloadVisitor<V, D>(PhantomData<(V, D)>);
+//
+//         // Note the different lifetime parameter on the Visitor:
+//         impl<'vde, V, T> Visitor<'vde> for DelegationPayloadVisitor<D>
+//         where
+//             V: Verify,
+//             T: Serialize + for<'any> Deserialize<'any>,
+//             Varsig<V, DagCborCodec, T>: Deserialize<'vde>,
+//         {
+//             type Value = DelegationPayload<D>;
+//
+//             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//                 f.write_str(r#"a map with "h" and exactly one dynamic payload key"#)
+//             }
+//
+//             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+//             where
+//                 M: MapAccess<'vde>,
+//             {
+//                 dbg!("***********HERE");
+//
+//                 let mut issuer: Option<D> = None;
+//                 let mut audience: Option<D> = None;
+//                 let mut subject: Option<DelegatedSubject<D>> = None;
+//                 let mut command: Option<Vec<String>> = None;
+//                 let mut policy: Option<Vec<Predicate>> = None;
+//                 let mut expiration: Option<Option<Timestamp>> = None;
+//                 let mut not_before: Option<Option<Timestamp>> = None;
+//                 let mut meta: Option<BTreeMap<String, Ipld>> = None;
+//                 let mut nonce: Option<Nonce> = None;
+//
+//                 while let Some(key) = map.next_key::<&str>()? {
+//                     dbg!(key);
+//                     match key {
+//                         "issuer" => {
+//                             if issuer.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("issuer"));
+//                             }
+//                             issuer = Some(map.next_value()?);
+//                         }
+//
+//                         "audience" => {
+//                             if audience.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("audience"));
+//                             }
+//                             audience = Some(map.next_value()?);
+//                         }
+//
+//                         "subject" => {
+//                             if subject.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("subject"));
+//                             }
+//                             subject = Some(map.next_value()?);
+//                         }
+//
+//                         "command" => {
+//                             if command.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("command"));
+//                             }
+//                             command = Some(map.next_value()?);
+//                         }
+//
+//                         "policy" => {
+//                             if policy.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("policy"));
+//                             }
+//                             policy = Some(map.next_value()?);
+//                         }
+//
+//                         "expiration" => {
+//                             if expiration.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("expiration"));
+//                             }
+//                             expiration = Some(map.next_value()?);
+//                         }
+//
+//                         "not_before" => {
+//                             if not_before.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("not_before"));
+//                             }
+//                             not_before = Some(map.next_value()?);
+//                         }
+//
+//                         "meta" => {
+//                             if meta.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("meta"));
+//                             }
+//                             meta = Some(map.next_value()?);
+//                         }
+//
+//                         "nonce" => {
+//                             if nonce.is_some() {
+//                                 return Err(serde::de::Error::duplicate_field("nonce"));
+//                             }
+//                             nonce = Some(map.next_value()?);
+//                         }
+//
+//                         _ => {
+//                             let _: serde::de::IgnoredAny = map.next_value()?;
+//                         }
+//                     }
+//                 }
+//
+//                 dbg!("***********HERE 1");
+//                 todo!()
+//             }
+//         }
+//     }
+// }
 
 impl<D: Did> DelegationPayload<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
