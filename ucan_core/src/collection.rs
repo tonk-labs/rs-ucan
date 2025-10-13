@@ -26,6 +26,15 @@ impl Collection {
     pub fn to_vec(&self) -> Vec<&Ipld> {
         self.into()
     }
+
+    /// Returns `true` if the collection is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Collection::Array(xs) => xs.is_empty(),
+            Collection::Map(xs) => xs.is_empty(),
+        }
+    }
 }
 
 impl FromIterator<Ipld> for Collection {
@@ -57,7 +66,10 @@ impl<'a> From<&'a Collection> for Vec<&'a Ipld> {
     fn from(collection: &'a Collection) -> Self {
         match collection {
             Collection::Array(xs) => xs.iter().collect(),
-            Collection::Map(xs) => xs.values().collect(),
+            Collection::Map(xs) => {
+                let ys = xs.values().collect();
+                ys
+            }
         }
     }
 }

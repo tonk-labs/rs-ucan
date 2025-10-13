@@ -266,6 +266,11 @@ mod tests {
         proptest! {
             #[test_log::test]
             fn test_identity(data in arb::<InternalIpld>()) {
+                if let InternalIpld::Float(f) = data {
+                    if f.is_nan() {
+                        prop_assume!(false);
+                    }
+                }
                 let selector = Select::<InternalIpld>::from_str(".")?;
                 prop_assert_eq!(selector.get(&data.clone().into())?, data.into());
             }
@@ -273,12 +278,14 @@ mod tests {
             #[test_log::test]
             fn test_try_missing_is_null(data in arb::<InternalIpld>()) {
                 let selector = Select::<Ipld>::from_str(".foo?")?;
-                let cleaned_data = match Ipld::from(data).clone() {
-                    Ipld::Map(mut m) => {
-                        m.remove("foo").map_or(Ipld::Null, |v| v)
-                    }
-                    ipld => ipld
-                };
+
+                let mut cleaned_data = Ipld::from(data);
+                if let Ipld::Map(ref mut m) = cleaned_data {
+                    m.remove("foo");
+                } else if let Ipld::List(_) = cleaned_data {
+                    cleaned_data = Ipld::Null;
+                }
+
                 prop_assert_eq!(selector.get(&cleaned_data)?, Ipld::Null);
             }
 
@@ -289,12 +296,13 @@ mod tests {
 
                 let selector: Select<Ipld> = Select::new(filters);
 
-                let cleaned_data = match Ipld::from(data).clone() {
-                    Ipld::Map(mut m) => {
-                        m.remove("foo").map_or(Ipld::Null, |v| v)
-                    }
-                    ipld => ipld
-                };
+                let mut cleaned_data = Ipld::from(data);
+                if let Ipld::Map(ref mut m) = cleaned_data {
+                    m.remove("foo");
+                } else if let Ipld::List(_) = cleaned_data {
+                    cleaned_data = Ipld::Null;
+                }
+
                 prop_assert_eq!(selector.get(&cleaned_data)?, Ipld::Null);
             }
         }

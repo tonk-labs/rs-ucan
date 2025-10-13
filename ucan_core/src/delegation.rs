@@ -183,7 +183,6 @@ where
                 let mut nonce: Option<Nonce> = None;
 
                 while let Some(key) = map.next_key::<&str>()? {
-                    dbg!(&key);
                     match key {
                         "iss" => {
                             if issuer.is_some() {
@@ -275,121 +274,6 @@ where
         deserializer.deserialize_map(DelegationPayloadVisitor::<T>(PhantomData))
     }
 }
-
-// impl<'de, T: Did + for <'ze> Deserialize<'ze>> Deserialize<'de> for DelegationPayload<T>
-// {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//         D: Deserializer<'de>,
-//     {
-//         struct DelegationPayloadVisitor<V, D>(PhantomData<(V, D)>);
-//
-//         // Note the different lifetime parameter on the Visitor:
-//         impl<'vde, V, T> Visitor<'vde> for DelegationPayloadVisitor<D>
-//         where
-//             V: Verify,
-//             T: Serialize + for<'any> Deserialize<'any>,
-//             Varsig<V, DagCborCodec, T>: Deserialize<'vde>,
-//         {
-//             type Value = DelegationPayload<D>;
-//
-//             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//                 f.write_str(r#"a map with "h" and exactly one dynamic payload key"#)
-//             }
-//
-//             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-//             where
-//                 M: MapAccess<'vde>,
-//             {
-//                 dbg!("***********HERE");
-//
-//                 let mut issuer: Option<D> = None;
-//                 let mut audience: Option<D> = None;
-//                 let mut subject: Option<DelegatedSubject<D>> = None;
-//                 let mut command: Option<Vec<String>> = None;
-//                 let mut policy: Option<Vec<Predicate>> = None;
-//                 let mut expiration: Option<Option<Timestamp>> = None;
-//                 let mut not_before: Option<Option<Timestamp>> = None;
-//                 let mut meta: Option<BTreeMap<String, Ipld>> = None;
-//                 let mut nonce: Option<Nonce> = None;
-//
-//                 while let Some(key) = map.next_key::<&str>()? {
-//                     dbg!(key);
-//                     match key {
-//                         "issuer" => {
-//                             if issuer.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("issuer"));
-//                             }
-//                             issuer = Some(map.next_value()?);
-//                         }
-//
-//                         "audience" => {
-//                             if audience.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("audience"));
-//                             }
-//                             audience = Some(map.next_value()?);
-//                         }
-//
-//                         "subject" => {
-//                             if subject.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("subject"));
-//                             }
-//                             subject = Some(map.next_value()?);
-//                         }
-//
-//                         "command" => {
-//                             if command.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("command"));
-//                             }
-//                             command = Some(map.next_value()?);
-//                         }
-//
-//                         "policy" => {
-//                             if policy.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("policy"));
-//                             }
-//                             policy = Some(map.next_value()?);
-//                         }
-//
-//                         "expiration" => {
-//                             if expiration.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("expiration"));
-//                             }
-//                             expiration = Some(map.next_value()?);
-//                         }
-//
-//                         "not_before" => {
-//                             if not_before.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("not_before"));
-//                             }
-//                             not_before = Some(map.next_value()?);
-//                         }
-//
-//                         "meta" => {
-//                             if meta.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("meta"));
-//                             }
-//                             meta = Some(map.next_value()?);
-//                         }
-//
-//                         "nonce" => {
-//                             if nonce.is_some() {
-//                                 return Err(serde::de::Error::duplicate_field("nonce"));
-//                             }
-//                             nonce = Some(map.next_value()?);
-//                         }
-//
-//                         _ => {
-//                             let _: serde::de::IgnoredAny = map.next_value()?;
-//                         }
-//                     }
-//                 }
-//
-//                 dbg!("***********HERE 1");
-//                 todo!()
-//             }
-//         }
-//     }
-// }
 
 impl<D: Did> DelegationPayload<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
@@ -535,8 +419,8 @@ mod tests {
     #[test]
     fn it_works() -> TestResult {
         let aud = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
-        let sub = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[1u8; 32]).unwrap());
-        let iss = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[2u8; 32]).unwrap());
+        let sub = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
+        let iss = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
 
         let delegation = DelegationBuilder::new()
             .issuer(iss)

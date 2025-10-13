@@ -60,7 +60,6 @@ impl<
             where
                 A: SeqAccess<'de>,
             {
-                dbg!(">>>>>>>>>>>> GOT 0");
                 let sig_ipld: Ipld = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
@@ -73,13 +72,10 @@ impl<
 
                 let signature = S::try_from(sig_bytes.as_slice())
                     .map_err(|_| de::Error::custom("invalid signature bytes"))?;
-                dbg!(">>>>>>>>>>>> GOT 1");
 
                 let payload: EnvelopePayload<V, T> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-
-                dbg!(">>>>>>>>>>> GOT 2");
 
                 // FIXME prevent extra fields
 
@@ -162,11 +158,8 @@ where
                 let mut payload: Option<T> = None;
                 let mut seen_payload = false;
 
-                dbg!(">>>>>>>>>> ENV PAYLOAD 0");
-
                 while let Some(key) = map.next_key::<&str>()? {
                     if key == "h" {
-                        dbg!(">>>>>>>>>> ENV PAYLOAD: H");
                         if header.is_some() {
                             return Err(de::Error::duplicate_field("h"));
                         }
@@ -187,23 +180,15 @@ where
 
                         header = Some(varsig_header);
                     } else {
-                        dbg!(">>>>>>>>>> ENV PAYLOAD: REST");
                         if seen_payload {
                             return Err(de::Error::custom(
                                 "expected exactly one dynamic payload entry",
                             ));
                         }
-                        dbg!(">>>> ABOUT TO TRY NEXT");
-                        dbg!(format!("KEY: {key}"));
-                        // let ipld = map.next_value::<Ipld>()?;
-                        // dbg!(format!("IPLD: {ipld:?}"));
                         payload = Some(map.next_value::<T>()?);
-                        dbg!(">>> NEXT DONE");
                         seen_payload = true;
                     }
                 }
-
-                dbg!("========== ENV PAYLOAD DONE");
 
                 let header = header.ok_or_else(|| de::Error::missing_field("h"))?;
                 let payload =
@@ -216,80 +201,3 @@ where
         deserializer.deserialize_map(EnvelopeVisitor(PhantomData))
     }
 }
-// impl<'de, V, T: Serialize + for<'ze> Deserialize<'ze>> Deserialize<'de> for EnvelopePayload<V, T>
-// where
-//     V: Verify,
-//     Varsig<V, DagCborCodec, T>: Deserialize<'de>,
-// {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         #[derive(Debug, Deserialize)]
-//         #[serde(field_identifier)]
-//         enum Field {
-//             Header,
-//             Payload(serde_value::Value),
-//         }
-//
-//         struct EnvelopeVisitor<V: Verify, T: Serialize + for<'ze> Deserialize<'ze>> {
-//             marker: PhantomData<fn() -> EnvelopePayload<V, T>>,
-//         }
-//
-//         impl<'de, V, T> Visitor<'de> for EnvelopeVisitor<V, T>
-//         where
-//             V: Verify,
-//             Varsig<V, DagCborCodec, T>: Deserialize<'de>,
-//             T: Serialize + for<'ee> Deserialize<'ee>,
-//         {
-//             type Value = EnvelopePayload<V, T>;
-//
-//             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-//                 formatter.write_str("a map with field `h` and flattened payload fields")
-//             }
-//
-//             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-//             where
-//                 M: MapAccess<'de>,
-//             {
-//                 let mut header: Option<Varsig<V, DagCborCodec, T>> = None;
-//                 let mut payload_map = BTreeMap::new();
-//
-//                 dbg!("0");
-//
-//                 while let Some(field) = map.next_key::<Field>()? {
-//                     dbg!("0.5 {:?}", &field);
-//                     match field {
-//                         Field::Header => {
-//                             dbg!("1");
-//                             if header.is_some() {
-//                                 return Err(de::Error::duplicate_field("h"));
-//                             }
-//                             header = Some(map.next_value()?);
-//                         }
-//                         Field::Payload(key) => {
-//                             dbg!("2");
-//                             let value: serde_value::Value = map.next_value()?;
-//                             payload_map.insert(key, value);
-//                         }
-//                     }
-//                 }
-//
-//                 dbg!("3");
-//
-//                 let header = header.ok_or_else(|| de::Error::missing_field("h"))?;
-//
-//                 dbg!(">>>>>>>>>> HERE");
-//
-//                 let payload_deserializer = serde_value::Value::Map(payload_map).into_deserializer();
-//                 let payload = T::deserialize(payload_deserializer).map_err(de::Error::custom)?;
-//
-//                 Ok(EnvelopePayload { header, payload })
-//             }
-//         }
-//
-//         deserializer.deserialize_map(EnvelopeVisitor {
-//             marker: PhantomData,
-//         })
-//     }
-// }

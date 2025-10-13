@@ -38,20 +38,20 @@ pub enum Predicate {
     Not(Box<Predicate>),
 
     /// Conjunction
-    And(Box<Predicate>, Box<Predicate>),
+    And(Vec<Predicate>),
 
     /// Disjunction
-    Or(Box<Predicate>, Box<Predicate>),
+    Or(Vec<Predicate>),
 
     /// Universal quantification over a collection
     ///
     /// "For all elements of a collection" (∀x ∈ xs) the precicate must hold
-    Every(Select<Collection>, Box<Predicate>),
+    All(Select<Collection>, Box<Predicate>),
 
     /// Existential quantification over a collection
     ///
     /// "For any element of a collection" (∃x ∈ xs) the predicate must hold
-    Some(Select<Collection>, Box<Predicate>),
+    Any(Select<Collection>, Box<Predicate>),
 }
 
 use serde::ser::SerializeTuple;
@@ -110,30 +110,28 @@ impl Serialize for Predicate {
                 tuple.serialize_element(inner)?;
                 tuple.end()
             }
-            Self::And(lhs, rhs) => {
-                let mut tuple = serializer.serialize_tuple(3)?;
+            Self::And(inner) => {
+                let mut tuple = serializer.serialize_tuple(2)?;
                 tuple.serialize_element(&"and")?;
-                tuple.serialize_element(lhs)?;
-                tuple.serialize_element(rhs)?;
+                tuple.serialize_element(inner)?;
                 tuple.end()
             }
-            Self::Or(lhs, rhs) => {
-                let mut tuple = serializer.serialize_tuple(3)?;
+            Self::Or(inner) => {
+                let mut tuple = serializer.serialize_tuple(2)?;
                 tuple.serialize_element(&"or")?;
-                tuple.serialize_element(lhs)?;
-                tuple.serialize_element(rhs)?;
+                tuple.serialize_element(inner)?;
                 tuple.end()
             }
-            Self::Every(xs, p) => {
+            Self::All(xs, p) => {
                 let mut tuple = serializer.serialize_tuple(3)?;
-                tuple.serialize_element(&"every")?;
+                tuple.serialize_element(&"all")?;
                 tuple.serialize_element(xs)?;
                 tuple.serialize_element(p)?;
                 tuple.end()
             }
-            Self::Some(xs, p) => {
+            Self::Any(xs, p) => {
                 let mut tuple = serializer.serialize_tuple(3)?;
-                tuple.serialize_element(&"some")?;
+                tuple.serialize_element(&"any")?;
                 tuple.serialize_element(xs)?;
                 tuple.serialize_element(p)?;
                 tuple.end()
@@ -212,23 +210,13 @@ impl<'de> Deserialize<'de> for Predicate {
                     "not" => Ok(Predicate::Not(Box::new(seq.next_element()?.ok_or_else(
                         || de::Error::invalid_length(1, &"expected a predicate"),
                     )?))),
-                    "and" => Ok(Predicate::And(
-                        Box::new(seq.next_element()?.ok_or_else(|| {
-                            de::Error::invalid_length(1, &"expected a predicate")
-                        })?),
-                        Box::new(seq.next_element()?.ok_or_else(|| {
-                            de::Error::invalid_length(2, &"expected a predicate")
-                        })?),
-                    )),
-                    "or" => Ok(Predicate::Or(
-                        Box::new(seq.next_element()?.ok_or_else(|| {
-                            de::Error::invalid_length(1, &"expected a predicate")
-                        })?),
-                        Box::new(seq.next_element()?.ok_or_else(|| {
-                            de::Error::invalid_length(2, &"expected a predicate")
-                        })?),
-                    )),
-                    "every" => Ok(Predicate::Every(
+                    "and" => Ok(Predicate::And(seq.next_element()?.ok_or_else(|| {
+                        de::Error::invalid_length(1, &"expected a predicate")
+                    })?)),
+                    "or" => Ok(Predicate::Or(seq.next_element()?.ok_or_else(|| {
+                        de::Error::invalid_length(1, &"expected a predicate")
+                    })?)),
+                    "all" => Ok(Predicate::All(
                         seq.next_element()?.ok_or_else(|| {
                             de::Error::invalid_length(1, &"expected a collection selector")
                         })?,
@@ -236,7 +224,7 @@ impl<'de> Deserialize<'de> for Predicate {
                             de::Error::invalid_length(2, &"expected a predicate")
                         })?),
                     )),
-                    "some" => Ok(Predicate::Some(
+                    "any" => Ok(Predicate::Any(
                         seq.next_element()?.ok_or_else(|| {
                             de::Error::invalid_length(1, &"expected a collection selector")
                         })?,
@@ -247,7 +235,7 @@ impl<'de> Deserialize<'de> for Predicate {
                     _ => Err(de::Error::unknown_variant(
                         &op,
                         &[
-                            "==", ">", ">=", "<", "<=", "like", "not", "and", "or", "every", "some",
+                            "==", ">", ">=", "<", "<=", "like", "not", "and", "or", "all", "any",
                         ],
                     )),
                 }
@@ -270,8 +258,8 @@ impl<'a> Arbitrary<'a> for Predicate {
             Or,
             And,
             Like,
-            Every,
-            Some,
+            All,
+            Any,
         }
 
         let op = u.choose(&[
@@ -283,8 +271,8 @@ impl<'a> Arbitrary<'a> for Predicate {
             Pick::Like,
             Pick::Or,
             Pick::And,
-            Pick::Every,
-            Pick::Some,
+            Pick::All,
+            Pick::Any,
         ])?;
 
         match op {
@@ -313,24 +301,22 @@ impl<'a> Arbitrary<'a> for Predicate {
                 String::arbitrary(u)?.into(),
             )),
             Pick::Or => {
-                let lhs = Predicate::arbitrary(u)?;
-                let rhs = Predicate::arbitrary(u)?;
-                Ok(Predicate::Or(Box::new(lhs), Box::new(rhs)))
+                let xs = Vec::<Predicate>::arbitrary(u)?;
+                Ok(Predicate::Or(xs))
             }
             Pick::And => {
-                let lhs = Predicate::arbitrary(u)?;
-                let rhs = Predicate::arbitrary(u)?;
-                Ok(Predicate::And(Box::new(lhs), Box::new(rhs)))
+                let xs = Vec::<Predicate>::arbitrary(u)?;
+                Ok(Predicate::And(xs))
             }
-            Pick::Every => {
+            Pick::All => {
                 let xs = Select::<Collection>::arbitrary(u)?;
                 let p = Predicate::arbitrary(u)?;
-                Ok(Predicate::Every(xs, Box::new(p)))
+                Ok(Predicate::All(xs, Box::new(p)))
             }
-            Pick::Some => {
+            Pick::Any => {
                 let xs = Select::<Collection>::arbitrary(u)?;
                 let p = Predicate::arbitrary(u)?;
-                Ok(Predicate::Some(xs, Box::new(p)))
+                Ok(Predicate::Any(xs, Box::new(p)))
             }
         }
     }
@@ -395,37 +381,66 @@ impl Predicate {
     ///
     /// Returns a [`SelectorError`] if the predicate *cannot* be evaluated against the data
     /// due to things like shape errors.
-    pub fn run(self, data: &Ipld) -> Result<bool, SelectorError> {
+    pub fn run(self, data: &Ipld) -> Result<bool, RunError> {
         Ok(match self {
-            Predicate::Equal(lhs, rhs_data) => lhs.get(data)? == rhs_data,
+            Predicate::Equal(lhs, rhs_data) => {
+                let focused_data = lhs.clone().get(data)?;
+                match (&focused_data, &rhs_data) {
+                    (Ipld::Integer(int), Ipld::Float(float)) => {
+                        if float.fract() == 0.0 {
+                            *int == *float as i128
+                        } else {
+                            Err(RunError::CannotCompareNonwholeFloatToInt)?
+                        }
+                    }
+                    (Ipld::Float(float), Ipld::Integer(int)) => {
+                        if float.fract() == 0.0 {
+                            *int == *float as i128
+                        } else {
+                            Err(RunError::CannotCompareNonwholeFloatToInt)?
+                        }
+                    }
+                    _ => focused_data == rhs_data,
+                }
+            }
             Predicate::GreaterThan(lhs, rhs_data) => lhs.get(data)? > rhs_data,
             Predicate::GreaterThanOrEqual(lhs, rhs_data) => lhs.get(data)? >= rhs_data,
             Predicate::LessThan(lhs, rhs_data) => lhs.get(data)? < rhs_data,
             Predicate::LessThanOrEqual(lhs, rhs_data) => lhs.get(data)? <= rhs_data,
             Predicate::Like(lhs, rhs_data) => glob(&lhs.get(data)?, &rhs_data),
             Predicate::Not(inner) => !inner.run(data)?,
-            Predicate::And(lhs, rhs) => lhs.run(data)? && rhs.run(data)?,
-            Predicate::Or(lhs, rhs) => lhs.run(data)? || rhs.run(data)?,
-            Predicate::Every(xs, p) => {
-                xs.get(data)?
-                    .to_vec()
-                    .iter()
-                    .try_fold(
-                        true,
-                        |acc, each_datum| Ok(acc && p.clone().run(each_datum)?),
-                    )?
+            Predicate::And(inner) => inner
+                .into_iter()
+                .try_fold(true, |acc, p| Ok::<_, RunError>(acc && p.run(data)?))?,
+            Predicate::Or(inner) => {
+                if inner.is_empty() {
+                    true
+                } else {
+                    inner
+                        .into_iter()
+                        .try_fold(false, |acc, p| Ok::<_, RunError>(acc || p.run(data)?))?
+                }
             }
-            Predicate::Some(xs, p) => xs
-                .get(data)?
-                .to_vec()
-                .iter()
-                .try_fold(false, |acc, each_datum| {
-                    Ok(acc || p.clone().run(each_datum)?)
-                })?,
+            Predicate::All(selector, p) => {
+                let focus = selector.get(data)?;
+                focus.to_vec().iter().try_fold(true, |acc, each_datum| {
+                    Ok::<_, RunError>(acc && p.clone().run(each_datum)?)
+                })?
+            }
+            Predicate::Any(selector, p) => {
+                let focus = selector.get(data)?;
+                if focus.is_empty() {
+                    true
+                } else {
+                    focus.to_vec().iter().try_fold(false, |acc, each_datum| {
+                        Ok::<_, RunError>(acc || p.clone().run(each_datum)?)
+                    })?
+                }
+            }
         })
     }
 
-    // FIXME check paths are subsets, becase that changes some of these
+    // FIXME check paths are subsets, becase that changes any of these
     /// Attempt to unify two selectors.
     #[must_use]
     #[allow(clippy::too_many_lines)]
@@ -773,67 +788,66 @@ impl Predicate {
             (Predicate::Not(lhs_inner), rhs) => {
                 lhs_inner.harmonize(rhs, lhs_ctx, rhs_ctx).complement()
             }
-            (_self, Predicate::And(and_left, and_right)) => {
-                let rhs_raw_pred1: Predicate = *and_left.clone();
-                let rhs_raw_pred2: Predicate = *and_right.clone();
-
-                match (
-                    self.harmonize(&rhs_raw_pred1, lhs_ctx.clone(), rhs_ctx.clone()),
-                    self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
-                ) {
-                    (Harmonization::Conflict, _) | (_, Harmonization::Conflict) => {
-                        Harmonization::Conflict
-                    }
-                    (Harmonization::IncomparablePath, rhs) => rhs,
-                    (lhs, Harmonization::IncomparablePath) => lhs,
-                    (Harmonization::Equal, rhs) => rhs,
-                    (lhs, Harmonization::Equal) => lhs,
-                    (Harmonization::LhsWeaker, Harmonization::LhsWeaker) => {
-                        Harmonization::LhsWeaker
-                    }
-                    (Harmonization::LhsStronger, Harmonization::LhsStronger) => {
-                        Harmonization::LhsStronger
-                    }
-                    (Harmonization::LhsStronger, Harmonization::LhsWeaker)
-                    | (Harmonization::LhsWeaker, Harmonization::LhsStronger)
-                    | (Harmonization::StrongerTogether, _)
-                    | (_, Harmonization::StrongerTogether) => Harmonization::StrongerTogether,
-                }
+            (_self, Predicate::And(and_inner)) => {
+                todo!()
+                // match (
+                //     self.harmonize(&rhs_raw_pred1, lhs_ctx.clone(), rhs_ctx.clone()),
+                //     self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
+                // ) {
+                //     (Harmonization::Conflict, _) | (_, Harmonization::Conflict) => {
+                //         Harmonization::Conflict
+                //     }
+                //     (Harmonization::IncomparablePath, rhs) => rhs,
+                //     (lhs, Harmonization::IncomparablePath) => lhs,
+                //     (Harmonization::Equal, rhs) => rhs,
+                //     (lhs, Harmonization::Equal) => lhs,
+                //     (Harmonization::LhsWeaker, Harmonization::LhsWeaker) => {
+                //         Harmonization::LhsWeaker
+                //     }
+                //     (Harmonization::LhsStronger, Harmonization::LhsStronger) => {
+                //         Harmonization::LhsStronger
+                //     }
+                //     (Harmonization::LhsStronger, Harmonization::LhsWeaker)
+                //     | (Harmonization::LhsWeaker, Harmonization::LhsStronger)
+                //     | (Harmonization::StrongerTogether, _)
+                //     | (_, Harmonization::StrongerTogether) => Harmonization::StrongerTogether,
+                // }
             }
-            (lhs @ Predicate::And(_, _), rhs) => lhs.harmonize(rhs, lhs_ctx, rhs_ctx).flip(),
-            (_self, Predicate::Or(or_left, or_right)) => {
-                let rhs_raw_pred1: Predicate = *or_left.clone();
-                let rhs_raw_pred2: Predicate = *or_right.clone();
+            // FIXME (lhs @ Predicate::And(inner) => lhs.harmonize(rhs, lhs_ctx, rhs_ctx).flip(),
+            (_self, Predicate::Or(inner)) => {
+                todo!()
+                // let rhs_raw_pred1: Predicate = *or_left.clone();
+                // let rhs_raw_pred2: Predicate = *or_right.clone();
 
-                match (
-                    self.harmonize(&rhs_raw_pred1, lhs_ctx.clone(), rhs_ctx.clone()),
-                    self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
-                ) {
-                    (Harmonization::Conflict, Harmonization::Conflict) => Harmonization::Conflict,
-                    (Harmonization::Conflict | Harmonization::IncomparablePath, rhs) => rhs,
-                    (lhs, Harmonization::Conflict | Harmonization::IncomparablePath) => lhs,
-                    (Harmonization::Equal, rhs) => rhs,
-                    (lhs, Harmonization::Equal) => lhs,
-                    (_, Harmonization::LhsWeaker) | (Harmonization::LhsWeaker, _) => {
-                        Harmonization::LhsWeaker
-                    }
-                    (
-                        Harmonization::LhsStronger,
-                        Harmonization::StrongerTogether | Harmonization::LhsStronger,
-                    )
-                    | (Harmonization::StrongerTogether, Harmonization::LhsStronger) => {
-                        Harmonization::LhsStronger
-                    }
-                    (Harmonization::StrongerTogether, Harmonization::StrongerTogether) => {
-                        Harmonization::StrongerTogether
-                    }
-                }
+                // match (
+                //     self.harmonize(&rhs_raw_pred1, lhs_ctx.clone(), rhs_ctx.clone()),
+                //     self.harmonize(&rhs_raw_pred2, lhs_ctx, rhs_ctx),
+                // ) {
+                //     (Harmonization::Conflict, Harmonization::Conflict) => Harmonization::Conflict,
+                //     (Harmonization::Conflict | Harmonization::IncomparablePath, rhs) => rhs,
+                //     (lhs, Harmonization::Conflict | Harmonization::IncomparablePath) => lhs,
+                //     (Harmonization::Equal, rhs) => rhs,
+                //     (lhs, Harmonization::Equal) => lhs,
+                //     (_, Harmonization::LhsWeaker) | (Harmonization::LhsWeaker, _) => {
+                //         Harmonization::LhsWeaker
+                //     }
+                //     (
+                //         Harmonization::LhsStronger,
+                //         Harmonization::StrongerTogether | Harmonization::LhsStronger,
+                //     )
+                //     | (Harmonization::StrongerTogether, Harmonization::LhsStronger) => {
+                //         Harmonization::LhsStronger
+                //     }
+                //     (Harmonization::StrongerTogether, Harmonization::StrongerTogether) => {
+                //         Harmonization::StrongerTogether
+                //     }
+                // }
             }
-            (lhs @ Predicate::Or(_, _), rhs) => lhs.harmonize(rhs, lhs_ctx, rhs_ctx).flip(),
+            (lhs @ Predicate::Or(_), rhs) => lhs.harmonize(rhs, lhs_ctx, rhs_ctx).flip(),
             //     /******************
             //      * Quantification *
             //      ******************/
-            //     Predicate::Every(rhs_selector, rhs_inner) => {
+            //     Predicate::All(rhs_selector, rhs_inner) => {
             //         let rhs_raw_pred: Predicate = *rhs_inner.clone();
             //         // TODO FIXME exact path
             //         todo!()
@@ -846,7 +860,7 @@ impl Predicate {
             //         //     }
             //         // }
             //     }
-            //     Predicate::Some(rhs_selector, rhs_inner) => {
+            //     Predicate::Any(rhs_selector, rhs_inner) => {
             //         let rhs_raw_pred: Predicate = *rhs_inner.clone();
             //         // TODO FIXME As long as the lhs path doens't terminate earlier, then pass
             //         todo!()
@@ -943,12 +957,35 @@ impl TryFrom<Ipld> for Predicate {
                     let inner = Box::new(Predicate::try_from(inner.clone())?);
                     Ok(Predicate::Not(inner))
                 }
+                [Ipld::String(op_str), Ipld::List(vec)] => match op_str.as_str() {
+                    "and" => {
+                        let mut inner = Vec::new();
+                        for ipld in vec {
+                            inner.push(Predicate::try_from(ipld.clone())?)
+                        }
+                        Ok(Predicate::And(inner))
+                    }
+                    "or" => {
+                        let mut inner = Vec::new();
+                        for ipld in vec {
+                            inner.push(Predicate::try_from(ipld.clone())?)
+                        }
+                        Ok(Predicate::Or(inner))
+                    }
+                    _ => Err(FromIpldError::UnrecognizedPairTag(op_str.to_string())),
+                },
                 [Ipld::String(op_str), Ipld::String(sel_str), val] => match op_str.as_str() {
                     "==" => {
                         let sel = Select::<Ipld>::from_str(sel_str.as_str())
                             .map_err(FromIpldError::InvalidIpldSelector)?;
 
                         Ok(Predicate::Equal(sel, val.clone()))
+                    }
+                    "!=" => {
+                        let sel = Select::<Ipld>::from_str(sel_str.as_str())
+                            .map_err(FromIpldError::InvalidIpldSelector)?;
+
+                        Ok(Predicate::Not(Box::new(Predicate::Equal(sel, val.clone()))))
                     }
                     ">" => {
                         let sel = Select::<Number>::from_str(sel_str.as_str())
@@ -995,32 +1032,19 @@ impl TryFrom<Ipld> for Predicate {
                             Err(FromIpldError::NotAString(val.clone()))
                         }
                     }
-                    "every" => {
+                    "all" => {
                         let sel = Select::<Collection>::from_str(sel_str.as_str())
                             .map_err(FromIpldError::InvalidCollectionSelector)?;
 
                         let p = Box::new(Predicate::try_from(val.clone())?);
-                        Ok(Predicate::Every(sel, p))
+                        Ok(Predicate::All(sel, p))
                     }
-                    "some" => {
+                    "any" => {
                         let sel = Select::<Collection>::from_str(sel_str.as_str())
                             .map_err(FromIpldError::InvalidCollectionSelector)?;
 
                         let p = Box::new(Predicate::try_from(val.clone())?);
-                        Ok(Predicate::Some(sel, p))
-                    }
-                    _ => Err(FromIpldError::UnrecognizedTripleTag(op_str.to_string())),
-                },
-                [Ipld::String(op_str), lhs, rhs] => match op_str.as_str() {
-                    "and" => {
-                        let lhs = Box::new(Predicate::try_from(lhs.clone())?);
-                        let rhs = Box::new(Predicate::try_from(rhs.clone())?);
-                        Ok(Predicate::And(lhs, rhs))
-                    }
-                    "or" => {
-                        let lhs = Box::new(Predicate::try_from(lhs.clone())?);
-                        let rhs = Box::new(Predicate::try_from(rhs.clone())?);
-                        Ok(Predicate::Or(lhs, rhs))
+                        Ok(Predicate::Any(sel, p))
                     }
                     _ => Err(FromIpldError::UnrecognizedTripleTag(op_str.to_string())),
                 },
@@ -1057,6 +1081,10 @@ pub enum FromIpldError {
     /// Not a string.
     #[error("Not a string: {0:?}")]
     NotAString(Ipld),
+
+    /// Unrecognized pair tag.
+    #[error("Unrecognized pair tag {0}")]
+    UnrecognizedPairTag(String),
 
     /// Unrecognized triple tag.
     #[error("Unrecognized triple tag {0}")]
@@ -1098,28 +1126,40 @@ impl From<Predicate> for Ipld {
                 let unboxed = *inner;
                 Ipld::List(vec![Ipld::String("not".to_string()), unboxed.into()])
             }
-            Predicate::And(lhs, rhs) => Ipld::List(vec![
-                Ipld::String("and".to_string()),
-                (*lhs).into(),
-                (*rhs).into(),
-            ]),
-            Predicate::Or(lhs, rhs) => Ipld::List(vec![
-                Ipld::String("or".to_string()),
-                (*lhs).into(),
-                (*rhs).into(),
-            ]),
-            Predicate::Every(xs, p) => Ipld::List(vec![
-                Ipld::String("every".to_string()),
+            Predicate::And(inner) => {
+                let inner_ipld: Vec<Ipld> = inner.into_iter().map(|p| p.into()).collect();
+                vec![Ipld::String("and".to_string()), inner_ipld.into()].into()
+            }
+            Predicate::Or(inner) => {
+                let inner_ipld: Vec<Ipld> = inner.into_iter().map(|p| p.into()).collect();
+                vec![Ipld::String("or".to_string()), inner_ipld.into()].into()
+            }
+            Predicate::All(xs, p) => Ipld::List(vec![
+                Ipld::String("all".to_string()),
                 xs.into(),
                 (*p).into(),
             ]),
-            Predicate::Some(xs, p) => Ipld::List(vec![
-                Ipld::String("some".to_string()),
+            Predicate::Any(xs, p) => Ipld::List(vec![
+                Ipld::String("any".to_string()),
                 xs.into(),
                 (*p).into(),
             ]),
         }
     }
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum RunError {
+    /// Cannot convert non-whole float to int.
+    #[error("Cannot convert non-whole float to int")]
+    CannotCompareNonwholeFloatToInt,
+
+    #[error("Cannot compare NaNs")]
+    CannotCompareNaNs,
+
+    /// Selector error.
+    #[error(transparent)]
+    SelectorError(#[from] SelectorError),
 }
 
 #[cfg(test)]
@@ -1267,7 +1307,7 @@ mod tests {
 
         fn wasm() -> Ipld {
             ipld!({
-                "mod": "data:application/wasm;base64,SOMEBASE64GOESHERE",
+                "mod": "data:application/wasm;base64,ANYBASE64GOESHERE",
                 "fun": "test",
                 "input": [0, 1, 2 ,3]
             })
@@ -1488,16 +1528,16 @@ mod tests {
 
         #[test_log::test]
         fn test_and_both_succeed() -> TestResult {
-            let p = Predicate::And(
-                Box::new(Predicate::Equal(
+            let p = Predicate::And(vec![
+                Predicate::Equal(
                     Select::from_str(".from").unwrap(),
                     "alice@example.com".into(),
-                )),
-                Box::new(Predicate::Equal(
+                ),
+                Predicate::Equal(
                     Select::from_str(".subject").unwrap(),
                     "Quarterly Reports".into(),
-                )),
-            );
+                ),
+            ]);
 
             assert!(p.run(&email())?);
             Ok(())
@@ -1505,16 +1545,13 @@ mod tests {
 
         #[test_log::test]
         fn test_and_left_fail() -> TestResult {
-            let p = Predicate::And(
-                Box::new(Predicate::Equal(
-                    Select::from_str(".from").unwrap(),
-                    "NOPE".into(),
-                )),
-                Box::new(Predicate::Equal(
+            let p = Predicate::And(vec![
+                Predicate::Equal(Select::from_str(".from").unwrap(), "NOPE".into()),
+                Predicate::Equal(
                     Select::from_str(".subject").unwrap(),
                     "Quarterly Reports".into(),
-                )),
-            );
+                ),
+            ]);
 
             assert!(!p.run(&email())?);
             Ok(())
@@ -1522,16 +1559,13 @@ mod tests {
 
         #[test_log::test]
         fn test_and_right_fail() -> TestResult {
-            let p = Predicate::And(
-                Box::new(Predicate::Equal(
+            let p = Predicate::And(vec![
+                Predicate::Equal(
                     Select::from_str(".from").unwrap(),
                     "alice@example.com".into(),
-                )),
-                Box::new(Predicate::Equal(
-                    Select::from_str(".subject").unwrap(),
-                    "NOPE".into(),
-                )),
-            );
+                ),
+                Predicate::Equal(Select::from_str(".subject").unwrap(), "NOPE".into()),
+            ]);
 
             assert!(!p.run(&email())?);
             Ok(())
@@ -1539,16 +1573,10 @@ mod tests {
 
         #[test_log::test]
         fn test_and_both_fail() -> TestResult {
-            let p = Predicate::And(
-                Box::new(Predicate::Equal(
-                    Select::from_str(".from").unwrap(),
-                    "NOPE".into(),
-                )),
-                Box::new(Predicate::Equal(
-                    Select::from_str(".subject").unwrap(),
-                    "NOPE".into(),
-                )),
-            );
+            let p = Predicate::And(vec![
+                Predicate::Equal(Select::from_str(".from").unwrap(), "NOPE".into()),
+                Predicate::Equal(Select::from_str(".subject").unwrap(), "NOPE".into()),
+            ]);
 
             assert!(!p.run(&email())?);
             Ok(())
@@ -1556,16 +1584,16 @@ mod tests {
 
         #[test_log::test]
         fn test_or_both_succeed() -> TestResult {
-            let p = Predicate::Or(
-                Box::new(Predicate::Equal(
+            let p = Predicate::Or(vec![
+                Predicate::Equal(
                     Select::from_str(".from").unwrap(),
                     "alice@example.com".into(),
-                )),
-                Box::new(Predicate::Equal(
+                ),
+                Predicate::Equal(
                     Select::from_str(".subject").unwrap(),
                     "Quarterly Reports".into(),
-                )),
-            );
+                ),
+            ]);
 
             assert!(p.run(&email())?);
             Ok(())
@@ -1573,16 +1601,13 @@ mod tests {
 
         #[test_log::test]
         fn test_or_left_fail() -> TestResult {
-            let p = Predicate::Or(
-                Box::new(Predicate::Equal(
-                    Select::from_str(".from").unwrap(),
-                    "NOPE".into(),
-                )),
-                Box::new(Predicate::Equal(
+            let p = Predicate::Or(vec![
+                Predicate::Equal(Select::from_str(".from").unwrap(), "NOPE".into()),
+                Predicate::Equal(
                     Select::from_str(".subject").unwrap(),
                     "Quarterly Reports".into(),
-                )),
-            );
+                ),
+            ]);
 
             assert!(p.run(&email())?);
             Ok(())
@@ -1590,16 +1615,13 @@ mod tests {
 
         #[test_log::test]
         fn test_or_right_fail() -> TestResult {
-            let p = Predicate::Or(
-                Box::new(Predicate::Equal(
+            let p = Predicate::Or(vec![
+                Predicate::Equal(
                     Select::from_str(".from").unwrap(),
                     "alice@example.com".into(),
-                )),
-                Box::new(Predicate::Equal(
-                    Select::from_str(".subject").unwrap(),
-                    "NOPE".into(),
-                )),
-            );
+                ),
+                Predicate::Equal(Select::from_str(".subject").unwrap(), "NOPE".into()),
+            ]);
 
             assert!(p.run(&email())?);
             Ok(())
@@ -1607,16 +1629,10 @@ mod tests {
 
         #[test_log::test]
         fn test_or_both_fail() -> TestResult {
-            let p = Predicate::Or(
-                Box::new(Predicate::Equal(
-                    Select::from_str(".from").unwrap(),
-                    "NOPE".into(),
-                )),
-                Box::new(Predicate::Equal(
-                    Select::from_str(".subject").unwrap(),
-                    "NOPE".into(),
-                )),
-            );
+            let p = Predicate::Or(vec![
+                Predicate::Equal(Select::from_str(".from").unwrap(), "NOPE".into()),
+                Predicate::Equal(Select::from_str(".subject").unwrap(), "NOPE".into()),
+            ]);
 
             assert!(!p.run(&email())?);
             Ok(())
@@ -1624,8 +1640,8 @@ mod tests {
 
         // FIXME nested, too
         #[test_log::test]
-        fn test_every() -> TestResult {
-            let p = Predicate::Every(
+        fn test_all() -> TestResult {
+            let p = Predicate::All(
                 Select::from_str(".input[]").unwrap(),
                 Box::new(Predicate::LessThan(
                     Select::from_str(".").unwrap(),
@@ -1638,8 +1654,8 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_every_failure() -> TestResult {
-            let p = Predicate::Every(
+        fn test_all_failure() -> TestResult {
+            let p = Predicate::All(
                 Select::from_str(".input[]").unwrap(),
                 Box::new(Predicate::LessThan(
                     Select::from_str(".").unwrap(),
@@ -1653,8 +1669,8 @@ mod tests {
 
         // FIXME nested, too
         #[test_log::test]
-        fn test_some_all_succeed() -> TestResult {
-            let p = Predicate::Some(
+        fn test_any_all_succeed() -> TestResult {
+            let p = Predicate::Any(
                 Select::from_str(".input[]").unwrap(),
                 Box::new(Predicate::LessThan(
                     Select::from_str(".").unwrap(),
@@ -1667,8 +1683,8 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_some_not_all() -> TestResult {
-            let p = Predicate::Some(
+        fn test_any_not_all() -> TestResult {
+            let p = Predicate::Any(
                 Select::from_str(".input[]").unwrap(),
                 Box::new(Predicate::LessThan(
                     Select::from_str(".").unwrap(),
@@ -1681,8 +1697,8 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_some_all_fail() -> TestResult {
-            let p = Predicate::Some(
+        fn test_any_all_fail() -> TestResult {
+            let p = Predicate::Any(
                 Select::from_str(".input[]").unwrap(),
                 Box::new(Predicate::LessThan(
                     Select::from_str(".").unwrap(),
@@ -1695,11 +1711,11 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_alternate_every_and_some() -> TestResult {
-            // ["every", ".a", ["some", ".b[]", ["==", ".", 0]]]
-            let p = Predicate::Every(
+        fn test_alternate_all_and_any() -> TestResult {
+            // ["all", ".a", ["any", ".b[]", ["==", ".", 0]]]
+            let p = Predicate::All(
                 Select::from_str(".a").unwrap(),
-                Box::new(Predicate::Some(
+                Box::new(Predicate::Any(
                     Select::from_str(".b[]").unwrap(),
                     Box::new(Predicate::Equal(Select::from_str(".").unwrap(), 0.into())),
                 )),
@@ -1712,7 +1728,7 @@ mod tests {
                             "b": {
                                 "c": 0, // Yep
                                 "d": 0, // Yep
-                                "e": 1  // Nope, but ok because "some"
+                                "e": 1  // Nope, but ok because "any"
                             },
                             "not-b": "ignore"
                         },
@@ -1729,11 +1745,11 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_alternate_fail_every_and_some() -> TestResult {
-            // ["every", ".a", ["some", ".b[]", ["==", ".", 0]]]
-            let p = Predicate::Every(
+        fn test_alternate_fail_all_and_any() -> TestResult {
+            // ["all", ".a", ["any", ".b[]", ["==", ".", 0]]]
+            let p = Predicate::All(
                 Select::from_str(".a").unwrap(),
-                Box::new(Predicate::Some(
+                Box::new(Predicate::Any(
                     Select::from_str(".b[]").unwrap(),
                     Box::new(Predicate::Equal(Select::from_str(".").unwrap(), 0.into())),
                 )),
@@ -1746,13 +1762,13 @@ mod tests {
                             "b": {
                                 "c": 0, // Yep
                                 "d": 0, // Yep
-                                "e": 1  // Nope, but ok because "some"
+                                "e": 1  // Nope, but ok because "any"
                             },
                             "not-b": "ignore"
                         },
                         {
                             "also-not-b": "ignore",
-                            "b": [-1, 42, 1] // No 0, so fail "every"
+                            "b": [-1, 42, 1] // No 0, so fail "all"
                         }
                     ]
                 }
@@ -1764,11 +1780,11 @@ mod tests {
 
         // FIXME
         #[test_log::test]
-        fn test_alternate_some_and_every() -> TestResult {
-            // ["some", ".a", ["every", ".b[]", ["==", ".", 0]]]
-            let p = Predicate::Some(
+        fn test_alternate_any_and_all() -> TestResult {
+            // ["any", ".a", ["all", ".b[]", ["==", ".", 0]]]
+            let p = Predicate::Any(
                 Select::from_str(".a").unwrap(),
-                Box::new(Predicate::Every(
+                Box::new(Predicate::All(
                     Select::from_str(".b[]").unwrap(),
                     Box::new(Predicate::Equal(Select::from_str(".").unwrap(), 0.into())),
                 )),
@@ -1781,13 +1797,13 @@ mod tests {
                             "b": {
                                 "c": 0, // Yep
                                 "d": 0, // Yep
-                                "e": 1  // Nope, so fail this every, but...
+                                "e": 1  // Nope, so fail this all, but...
                             },
                             "not-b": "ignore"
                         },
                         {
                             "also-not-b": "ignore",
-                            "b": [0, 0, 0] // This every succeeds, so the outer "some" succeeds
+                            "b": [0, 0, 0] // This all succeeds, so the outer "any" succeeds
                         }
                     ]
                 }
@@ -1799,11 +1815,11 @@ mod tests {
 
         // FIXME
         #[test_log::test]
-        fn test_alternate_fail_some_and_every() -> TestResult {
-            // ["some", ".a", ["every", ".b[]", ["==", ".", 0]]]
-            let p = Predicate::Some(
+        fn test_alternate_fail_any_and_all() -> TestResult {
+            // ["any", ".a", ["all", ".b[]", ["==", ".", 0]]]
+            let p = Predicate::Any(
                 Select::from_str(".a").unwrap(),
-                Box::new(Predicate::Every(
+                Box::new(Predicate::All(
                     Select::from_str(".b[]").unwrap(),
                     Box::new(Predicate::Equal(Select::from_str(".").unwrap(), 0.into())),
                 )),
@@ -1833,23 +1849,23 @@ mod tests {
         }
 
         #[test_log::test]
-        fn test_deeply_alternate_some_and_every() -> TestResult {
-            // ["some", ".a",
-            //   ["every", ".b.c[]",
-            //     ["some", ".d",
-            //       ["every", ".e[]",
+        fn test_deeply_alternate_any_and_all() -> TestResult {
+            // ["any", ".a",
+            //   ["all", ".b.c[]",
+            //     ["any", ".d",
+            //       ["all", ".e[]",
             //         ["==", ".f.g", 0]
             //       ]
             //     ]
             //   ]
             // ]
-            let p = Predicate::Some(
+            let p = Predicate::Any(
                 Select::from_str(".a").unwrap(),
-                Box::new(Predicate::Every(
+                Box::new(Predicate::All(
                     Select::from_str(".b.c[]").unwrap(),
-                    Box::new(Predicate::Some(
+                    Box::new(Predicate::Any(
                         Select::from_str(".d").unwrap(),
-                        Box::new(Predicate::Every(
+                        Box::new(Predicate::All(
                             Select::from_str(".e[]").unwrap(),
                             Box::new(Predicate::Equal(
                                 Select::from_str(".f.g").unwrap(),
@@ -1862,17 +1878,17 @@ mod tests {
 
             let deeply_nested_data = ipld!(
                 {
-                    // Some
+                    // Any
                     "a": [
                         {
                             "b": {
                                 "c": {
-                                    // Every
+                                    // All
                                     "c1": {
-                                        // Some
+                                        // Any
                                         "d": [
                                             {
-                                                // Every
+                                                // All
                                                 "e": {
                                                     "e1": {
                                                         "f": {
@@ -1891,11 +1907,11 @@ mod tests {
                                         ]
                                     },
                                     "c2": {
-                                        // Some
+                                        // Any
                                         "*": "avoid",
                                         "d": [
                                             {
-                                                // Every
+                                                // All
                                                 "e": {
                                                     "e1": {
                                                         "f": {

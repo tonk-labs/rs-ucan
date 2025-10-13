@@ -33,26 +33,16 @@ impl FromStr for Ed25519Did {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 3 || parts[0] != "did" || parts[1] != "key" {
-            dbg!("&&&&&&& BAD STRUCTURE");
             return Err(()); // FIXME
         }
-        dbg!("&&&&&&& GOOD STRUCTURE");
         let b58 = parts[2].strip_prefix('z').expect("FIXME");
-        dbg!("&&&&&&& STRIPED PREFIX");
         let key_bytes = base58::FromBase58::from_base58(b58).map_err(|_| ())?;
-        dbg!("&&&&&&& FROM B58");
-        dbg!(key_bytes.len());
         let raw_arr = <[u8; 34]>::try_from(key_bytes.as_slice()).map_err(|_| ())?;
-        dbg!("&&&&&&& RIGHT SIZE");
         if raw_arr[0] != 0xed || raw_arr[1] != 0x01 {
-            dbg!("&&&&&&& BAD PREFIX");
             return Err(()); // FIXME
         }
-        dbg!("&&&&&&& GOOD PREFIX");
         let key_arr: [u8; 32] = raw_arr[2..].try_into().map_err(|_| ())?;
-        dbg!("&&&&&&& RIGHT SIZE AGAIN");
         let key = ed25519_dalek::VerifyingKey::from_bytes(&key_arr).map_err(|_| ())?;
-        dbg!("&&&&&&& MADE VK");
         Ok(Ed25519Did(key, Ed25519::new()))
     }
 }
