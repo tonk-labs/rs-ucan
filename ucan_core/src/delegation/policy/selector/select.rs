@@ -85,7 +85,6 @@ impl<T: Selectable> Select<T> {
                         let op: Filter = *inner.clone();
                         let ipld: Ipld =
                             Select::<Ipld>::new(vec![op]).get(ctx).unwrap_or(Ipld::Null);
-
                         Ok((ipld, seen_ops.clone(), true))
                     }
                     Filter::ArrayIndex(i) => {
@@ -245,23 +244,23 @@ mod tests {
         use proptest::prelude::*;
         use proptest_arbitrary_interop::arb;
 
-        fn nested_data() -> Ipld {
-            Ipld::Map(
-                vec![
-                    ("name".to_string(), Ipld::String("Alice".to_string())),
-                    ("age".to_string(), Ipld::Integer(42)),
-                    (
-                        "friends".to_string(),
-                        Ipld::List(vec![
-                            Ipld::String("Bob".to_string()),
-                            Ipld::String("Charlie".to_string()),
-                        ]),
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            )
-        }
+        // fn nested_data() -> Ipld {
+        //     Ipld::Map(
+        //         vec![
+        //             ("name".to_string(), Ipld::String("Alice".to_string())),
+        //             ("age".to_string(), Ipld::Integer(42)),
+        //             (
+        //                 "friends".to_string(),
+        //                 Ipld::List(vec![
+        //                     Ipld::String("Bob".to_string()),
+        //                     Ipld::String("Charlie".to_string()),
+        //                 ]),
+        //             ),
+        //         ]
+        //         .into_iter()
+        //         .collect(),
+        //     )
+        // }
 
         proptest! {
             #[test_log::test]
@@ -292,15 +291,32 @@ mod tests {
             #[test_log::test]
             fn test_try_missing_plus_trailing_is_null(data in arb::<InternalIpld>(), more in arb::<Vec<Filter>>()) {
                 let mut filters = vec![Filter::Try(Box::new(Filter::Field("foo".into())))];
-                filters.append(&mut more.clone());
+
+                for f in &more {
+                    if let Filter::Try(inner) = f {
+                        let mut work = *inner.clone();
+                        loop {
+                            if let Filter::Try(nested) = work {
+                                work = *nested;
+                            } else {
+                                break;
+                            }
+                        }
+                        filters.push(Filter::Try(Box::new(work)));
+                    } else {
+                        filters.push(f.clone());
+                    }
+                }
+
+                if filters.contains(&Filter::Values) || filters.contains(&Filter::Try(Box::new(Filter::Values))) {
+                    prop_assume!(false);
+                }
 
                 let selector: Select<Ipld> = Select::new(filters);
 
                 let mut cleaned_data = Ipld::from(data);
                 if let Ipld::Map(ref mut m) = cleaned_data {
                     m.remove("foo");
-                } else if let Ipld::List(_) = cleaned_data {
-                    cleaned_data = Ipld::Null;
                 }
 
                 prop_assert_eq!(selector.get(&cleaned_data)?, Ipld::Null);

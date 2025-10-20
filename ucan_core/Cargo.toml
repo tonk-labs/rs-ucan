@@ -40,7 +40,7 @@ pretty_assertions.workspace = true
 proptest = { workspace = true, optional = false }
 proptest-arbitrary-interop = "0.1.0"
 serde_json = "1.0"
-serde_ipld_dagjson = "0.2.0"
+serde_ipld_dagjson.workspace = true
 test-log.workspace = true
 testresult.workspace = true
 

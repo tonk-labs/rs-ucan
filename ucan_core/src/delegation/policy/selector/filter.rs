@@ -5,14 +5,18 @@ use nom::{
     self,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alphanumeric1, char, digit1},
+    character::complete::{alphanumeric1, char, digit1, satisfy},
     combinator::map_res,
     error::context,
-    multi::many1,
+    multi::{many0, many1},
     sequence::{delimited, preceded, terminated},
     IResult, Parser,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{Error as DeError, SeqAccess, Visitor},
+    ser::SerializeSeq,
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{fmt, str::FromStr};
 
 #[cfg(any(test, feature = "test_utils"))]
@@ -66,18 +70,46 @@ impl Filter {
     }
 }
 
+use std::fmt::Write;
+
+fn write_json_string(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
+    f.write_str("\"")?;
+    for ch in s.chars() {
+        match ch {
+            '\"' => f.write_str("\\\"")?,
+            '\\' => f.write_str("\\\\")?,
+            '\n' => f.write_str("\\n")?,
+            '\r' => f.write_str("\\r")?,
+            '\t' => f.write_str("\\t")?,
+            '\u{08}' => f.write_str("\\b")?, // backspace
+            '\u{0C}' => f.write_str("\\f")?, // form feed
+            c if (c as u32) < 0x20 => {
+                // C0 control → \uXXXX
+                write!(f, "\\u{:04X}", c as u32)?
+            }
+            c => f.write_char(c)?,
+        }
+    }
+    f.write_str("\"")
+}
+
 impl fmt::Display for Filter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Filter::ArrayIndex(i) => write!(f, "[{i}]"),
             Filter::Field(k) => {
-                if self.is_dot_field() {
+                // Be conservative: only use dot form for safe identifiers.
+                let dot_ok = self.is_dot_field()
+                    && !k.chars().any(|c| c.is_control() || c == '"' || c == '\\');
+                if dot_ok {
                     write!(f, ".{k}")
                 } else {
-                    write!(f, "[\"{k}\"]")
+                    f.write_str("[")?;
+                    write_json_string(f, k)?;
+                    f.write_str("]")
                 }
             }
-            Filter::Values => write!(f, "[]"),
+            Filter::Values => f.write_str("[]"),
             Filter::Try(inner) => write!(f, "{inner}?"),
         }
     }
@@ -101,7 +133,15 @@ pub fn parse(input: &str) -> IResult<&str, Filter> {
 pub fn parse_try(input: &str) -> IResult<&str, Filter> {
     let p = map_res(
         terminated(parse_non_try, many1(tag("?"))),
-        |found: Filter| Ok::<Filter, ()>(Filter::Try(Box::new(found))),
+        |found: Filter| {
+            let mut work = found.clone();
+            if let Filter::Try(inner) = found {
+                if let Filter::Try(nested) = *inner {
+                    work = *nested;
+                }
+            }
+            Ok::<Filter, ()>(Filter::Try(Box::new(work)))
+        },
     );
 
     context("try", p).parse(input)
@@ -179,29 +219,14 @@ pub fn parse_dot_field(input: &str) -> IResult<&str, Filter> {
     context("dot_field", p).parse(input)
 }
 
-fn dot_starter(input: &str) -> IResult<&str, &str> {
-    if input.len() < 2 {
-        return Err(nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Tag,
-        )));
-    }
-
-    let bytes = input.as_bytes();
-
-    if bytes[0] == b'.' && (char::from(bytes[1]).is_alphabetic() || bytes[1] == b'_') {
-        return Ok((&input[2..], &input[..2]));
-    }
-
-    Err(nom::Err::Error(nom::error::Error::new(
-        input,
-        nom::error::ErrorKind::Tag,
-    )))
-}
-
 /// Checks if a character is allowed in a dot field.
 fn is_allowed_in_dot_field(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
+}
+
+fn dot_starter(input: &str) -> IResult<&str, char> {
+    let (i, _) = ch('.').parse(input)?;
+    satisfy(|c| c.is_alphabetic() || c == '_').parse(i)
 }
 
 /// Parses an alphabetic field that starts with `.`, e.g. `.foo`.
@@ -210,21 +235,16 @@ fn is_allowed_in_dot_field(c: char) -> bool {
 ///
 /// Returns a `nom` error if the parser fails to match.
 pub fn parse_dot_alpha_field(input: &str) -> IResult<&str, Filter> {
-    let p = map_res(
-        preceded(
-            dot_starter,
-            nom::multi::many0(nom::character::complete::satisfy(is_allowed_in_dot_field)),
-        ),
-        |found: Vec<char>| {
-            let inner = [input.as_bytes()[1] as char]
-                .iter()
-                .chain(found.iter())
-                .collect::<String>();
-            Ok::<Filter, ()>(Filter::Field(inner))
-        },
-    );
+    let (i, first) = dot_starter(input)?;
+    let (i, tail) = many0(satisfy(is_allowed_in_dot_field)).parse(i)?;
 
-    context("dot_field", p).parse(input)
+    let mut s = String::with_capacity(1 + tail.len());
+    s.push(first);
+    for c in tail {
+        s.push(c);
+    }
+
+    Ok((i, Filter::Field(s)))
 }
 
 /// Parses a field that starts with `._`, e.g. `._foo`.
@@ -317,15 +337,271 @@ pub fn unicode_or_space(input: &str) -> IResult<&str, &str> {
 ///
 /// Returns a `nom` error if the parser fails to match.
 pub fn parse_delim_field(input: &str) -> IResult<&str, Filter> {
-    let p = map_res(
-        delimited(tag(r#"[""#), unicode_or_space, tag(r#""]"#)),
-        |found: &str| Ok::<Filter, ()>(Filter::Field(found.to_string())),
-    );
-
+    let p = delimited(ch('['), json_string.map(Filter::Field), ch(']'));
     context("delimited_field", alt((p, parse_empty_quotes_field))).parse(input)
 }
 
-impl FromStr for Filter {
+impl Serialize for Filter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            // `[ <integer> ]`
+            Filter::ArrayIndex(i) => {
+                let mut seq = serializer.serialize_seq(Some(2))?;
+                seq.serialize_element("idx")?;
+                seq.serialize_element(i)?;
+                seq.end()
+            }
+
+            // `[ "field", <string> ]`
+            Filter::Field(k) => {
+                let mut seq = serializer.serialize_seq(Some(2))?;
+                seq.serialize_element("field")?;
+                seq.serialize_element(k)?;
+                seq.end()
+            }
+
+            // `[ "values" ]`
+            Filter::Values => {
+                let mut seq = serializer.serialize_seq(Some(1))?;
+                seq.serialize_element("values")?;
+                seq.end()
+            }
+
+            // `[ "try", <Filter> ]`
+            Filter::Try(inner) => {
+                let mut seq = serializer.serialize_seq(Some(2))?;
+                seq.serialize_element("try")?;
+                seq.serialize_element(inner)?;
+                seq.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Filter {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct FilterVisitor;
+
+        impl<'de> Visitor<'de> for FilterVisitor {
+            type Value = Filter;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+                write!(
+                    f,
+                    r#"a tagged sequence like ["idx", 3], ["field", "foo"], ["values"], or ["try", ...]"#
+                )
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let tag: String = seq
+                    .next_element()?
+                    .ok_or_else(|| A::Error::custom("missing tag"))?;
+
+                match tag.as_str() {
+                    "idx" => {
+                        let i: i32 = seq
+                            .next_element()?
+                            .ok_or_else(|| A::Error::custom("missing index"))?;
+                        Ok(Filter::ArrayIndex(i))
+                    }
+                    "field" => {
+                        let k: String = seq
+                            .next_element()?
+                            .ok_or_else(|| A::Error::custom("missing field"))?;
+                        Ok(Filter::Field(k))
+                    }
+                    "values" => Ok(Filter::Values),
+                    "try" => {
+                        let inner: Filter = seq
+                            .next_element()?
+                            .ok_or_else(|| A::Error::custom("missing inner"))?;
+                        Ok(Filter::Try(Box::new(inner)))
+                    }
+                    other => Err(A::Error::custom(format!("unknown tag {other:?}"))),
+                }
+            }
+        }
+
+        deserializer.deserialize_seq(FilterVisitor)
+    }
+}
+
+#[derive(Debug, PartialEq, thiserror::Error)]
+pub enum FilterTextError {
+    #[error("unexpected end of input")]
+    Eof,
+    #[error("expected closing {0}")]
+    Expected(char),
+    #[error("invalid escape sequence")]
+    BadEscape,
+    #[error("invalid unicode escape")]
+    BadUnicode,
+    #[error("invalid number")]
+    BadNumber,
+    #[error("trailing input: {0}")]
+    Trailing(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum FilterParseError {
+    Eof,
+    Expected(char),
+    BadEscape,
+    BadUnicode,
+}
+
+fn hex4(s: &str, start: usize) -> Result<(u16, usize), FilterParseError> {
+    // returns (value, next_index AFTER the 4 hex digits)
+    let bs = s.as_bytes();
+    if start + 4 > bs.len() {
+        return Err(FilterParseError::Eof);
+    }
+    let mut v: u16 = 0;
+    for j in 0..4 {
+        v = (v << 4)
+            | match bs[start + j] {
+                b'0'..=b'9' => (bs[start + j] - b'0') as u16,
+                b'a'..=b'f' => (bs[start + j] - b'a' + 10) as u16,
+                b'A'..=b'F' => (bs[start + j] - b'A' + 10) as u16,
+                _ => return Err(FilterParseError::BadUnicode),
+            };
+    }
+    Ok((v, start + 4))
+}
+
+/// Parse a JSON string literal starting at a `"`
+/// Returns (decoded_string, rest_after_closing_quote)
+fn decode_json_string_literal(input: &str) -> Result<(String, &str), FilterParseError> {
+    let b = input.as_bytes();
+    if b.first() != Some(&b'"') {
+        return Err(FilterParseError::Expected('"'));
+    }
+    let mut out = String::new();
+    // i points to the next byte to *read*
+    let mut i = 1; // after opening quote
+
+    while i < b.len() {
+        match b[i] {
+            b'"' => {
+                // closing quote; return slice AFTER it
+                return Ok((out, &input[i + 1..]));
+            }
+            b'\\' => {
+                i += 1;
+                if i >= b.len() {
+                    return Err(FilterParseError::Eof);
+                }
+                match b[i] as char {
+                    '"' => {
+                        out.push('"');
+                        i += 1;
+                    }
+                    '\\' => {
+                        out.push('\\');
+                        i += 1;
+                    }
+                    '/' => {
+                        out.push('/');
+                        i += 1;
+                    }
+                    'b' => {
+                        out.push('\u{0008}');
+                        i += 1;
+                    } // backspace
+                    'f' => {
+                        out.push('\u{000C}');
+                        i += 1;
+                    } // form feed
+                    'n' => {
+                        out.push('\n');
+                        i += 1;
+                    }
+                    'r' => {
+                        out.push('\r');
+                        i += 1;
+                    }
+                    't' => {
+                        out.push('\t');
+                        i += 1;
+                    }
+                    'u' => {
+                        // \uXXXX (maybe followed by a surrogate pair)
+                        let (cu1, mut next) = hex4(input, i + 1)?;
+                        let u = cu1 as u32;
+                        if (0xD800..=0xDBFF).contains(&cu1) {
+                            // expect \uDC00–\uDFFF next
+                            let bs = input.as_bytes();
+                            if next + 6 > bs.len() || bs[next] != b'\\' || bs[next + 1] != b'u' {
+                                return Err(FilterParseError::BadUnicode);
+                            }
+                            let (cu2, next2) = hex4(input, next + 2)?;
+                            if !(0xDC00..=0xDFFF).contains(&cu2) {
+                                return Err(FilterParseError::BadUnicode);
+                            }
+                            let hi = u - 0xD800;
+                            let lo = cu2 as u32 - 0xDC00;
+                            let scalar = 0x10000 + ((hi << 10) | lo);
+                            let ch = char::from_u32(scalar).ok_or(FilterParseError::BadUnicode)?;
+                            out.push(ch);
+                            i = next2; // advance past the pair
+                        } else if (0xDC00..=0xDFFF).contains(&cu1) {
+                            return Err(FilterParseError::BadUnicode);
+                        } else {
+                            let ch = char::from_u32(u).ok_or(FilterParseError::BadUnicode)?;
+                            out.push(ch);
+                            i = next; // advance past XXXX
+                        }
+                    }
+                    _ => return Err(FilterParseError::BadEscape),
+                }
+            }
+            _ => {
+                // regular UTF-8 char
+                let ch = input[i..].chars().next().ok_or(FilterParseError::Eof)?;
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    Err(FilterParseError::Eof)
+}
+
+use nom::{
+    character::complete::char as ch,
+    error::{Error as NomError, ErrorKind},
+};
+
+fn json_string<'a>(input: &'a str) -> IResult<&'a str, String> {
+    match decode_json_string_literal(input) {
+        Ok((val, rest)) => Ok((rest, val)),
+        Err(FilterParseError::Expected(_)) => {
+            Err(nom::Err::Error(NomError::new(input, ErrorKind::Char)))
+        }
+        Err(FilterParseError::Eof) => Err(nom::Err::Failure(NomError::new(input, ErrorKind::Eof))),
+        Err(FilterParseError::BadEscape) => {
+            Err(nom::Err::Failure(NomError::new(input, ErrorKind::Escaped)))
+        }
+        Err(FilterParseError::BadUnicode) => {
+            Err(nom::Err::Failure(NomError::new(input, ErrorKind::Escaped)))
+        }
+    }
+}
+
+// ["..."]  ->  Field(decoded_string)
+fn field_bracket(i: &str) -> IResult<&str, Filter> {
+    let (i, key) = delimited(ch('['), json_string, ch(']')).parse(i)?;
+    Ok((i, Filter::Field(key)))
+}
+impl std::str::FromStr for Filter {
     type Err = nom::Err<ParseError>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -335,17 +611,160 @@ impl FromStr for Filter {
         }
     }
 }
-impl Serialize for Filter {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_string().serialize(serializer)
+
+// impl FromStr for Filter {
+//     type Err = nom::Err<ParseError>;
+//
+//     fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+//         // s = s.trim();
+//         match parse(s).map_err(|e| nom::Err::Failure(ParseError::UnknownPattern(e.to_string())))? {
+//             ("", found) => Ok(found),
+//             (rest, _) => Err(nom::Err::Failure(ParseError::TrailingInput(rest.into()))),
+//         }
+//
+//         // // Try suffix '?': <inner>?
+//         // if let Some(inner) = s.strip_suffix('?') {
+//         //     let inner = inner.parse::<Filter>()?;
+//         //     return Ok(Filter::Try(Box::new(inner)));
+//         // }
+//
+//         // // Bracketed forms: [], [123], ["..."]
+//         // if let Some(mut inner) = s.strip_prefix('[') {
+//         //     inner = inner.trim_start();
+//         //     let rest = inner
+//         //         .strip_suffix(']')
+//         //         .ok_or(FilterTextError::Expected(']'))?
+//         //         .trim_end();
+//
+//         //     if rest.is_empty() {
+//         //         return Ok(Filter::Values);
+//         //     }
+//
+//         //     if rest.starts_with('"') {
+//         //         // ["..."] → Field(JSON string)
+//         //         let (val, after) = parse_json_string(rest)?; // after points right after the closing quote
+//         //         if !after.trim().is_empty() {
+//         //             return Err(FilterTextError::Trailing(after.to_owned()));
+//         //         }
+//         //         return Ok(Filter::Field(val));
+//         //     }
+//
+//         //     // [123] → ArrayIndex
+//         //     let i: i32 = rest.parse().map_err(|_| FilterTextError::BadNumber)?;
+//         //     return Ok(Filter::ArrayIndex(i));
+//         // }
+//
+//         // // Dot-form field: .foo
+//         // if let Some(name) = s.strip_prefix('.') {
+//         //     // Optional: you can enforce your "dot identifier" policy here if needed.
+//         //     return Ok(Filter::Field(name.to_string()));
+//         // }
+//
+//         // // Fallback: plain field
+//         // Ok(Filter::Field(s.to_string()))
+//     }
+// }
+
+/// Parse a JSON string literal starting with `"` and return (decoded, rest_after_string)
+fn parse_json_string(input: &str) -> Result<(String, &str), FilterTextError> {
+    let bytes = input.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return Err(FilterTextError::Expected('"'));
     }
+
+    let mut out = String::new();
+    let mut i = 1; // skip opening quote
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                // closing quote
+                let rest = &input[i + 1..];
+                return Ok((out, rest));
+            }
+            b'\\' => {
+                i += 1;
+                if i >= bytes.len() {
+                    return Err(FilterTextError::Eof);
+                }
+                match bytes[i] as char {
+                    '"' => out.push('"'),
+                    '\\' => out.push('\\'),
+                    '/' => out.push('/'),
+                    'b' => out.push('\u{0008}'),
+                    'f' => out.push('\u{000C}'),
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    'u' => {
+                        // \uXXXX (hex4), possibly a surrogate pair
+                        let (cu1, n1) = decode_hex4(input, i + 1)?;
+                        i = n1; // n1 is index of the last hex nibble
+                        let u = cu1 as u32;
+
+                        if (0xD800..=0xDBFF).contains(&cu1) {
+                            // high surrogate, expect \uDC00–\uDFFF next
+                            // must be immediately followed by \uXXXX
+                            let after = i + 1;
+                            if input.as_bytes().get(after) != Some(&b'\\')
+                                || input.as_bytes().get(after + 1) != Some(&b'u')
+                            {
+                                return Err(FilterTextError::BadUnicode);
+                            }
+                            let (cu2, n2) = decode_hex4(input, after + 2)?;
+                            if !(0xDC00..=0xDFFF).contains(&cu2) {
+                                return Err(FilterTextError::BadUnicode);
+                            }
+                            i = n2;
+                            let hi = u - 0xD800;
+                            let lo = cu2 as u32 - 0xDC00;
+                            let scalar = 0x10000 + ((hi << 10) | lo);
+                            let ch =
+                                std::char::from_u32(scalar).ok_or(FilterTextError::BadUnicode)?;
+                            out.push(ch);
+                        } else if (0xDC00..=0xDFFF).contains(&cu1) {
+                            // unexpected lone low surrogate
+                            return Err(FilterTextError::BadUnicode);
+                        } else {
+                            let ch = std::char::from_u32(u).ok_or(FilterTextError::BadUnicode)?;
+                            out.push(ch);
+                        }
+                        // `i` already advanced by decode_hex4 plus any surrogate pair handling
+                        continue;
+                    }
+                    _ => return Err(FilterTextError::BadEscape),
+                }
+            }
+            b => {
+                // regular UTF-8 char; validate and push
+                let c = input[i..].chars().next().ok_or(FilterTextError::Eof)?;
+                out.push(c);
+                i += c.len_utf8();
+                continue;
+            }
+        }
+        i += 1;
+    }
+    Err(FilterTextError::Eof)
 }
 
-impl<'de> Deserialize<'de> for Filter {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        Filter::from_str(&s).map_err(|e| serde::de::Error::custom(e.to_string()))
+/// Decode exactly 4 hex digits at `start` (byte index into `s`) → (u16_value, last_index_of_hex)
+fn decode_hex4(s: &str, start: usize) -> Result<(u16, usize), FilterTextError> {
+    let bs = s.as_bytes();
+    if start + 3 >= bs.len() {
+        return Err(FilterTextError::Eof);
     }
+    let mut val: u16 = 0;
+    for j in 0..4 {
+        let b = bs[start + j];
+        let v = match b {
+            b'0'..=b'9' => (b - b'0') as u16,
+            b'a'..=b'f' => (b - b'a' + 10) as u16,
+            b'A'..=b'F' => (b - b'A' + 10) as u16,
+            _ => return Err(FilterTextError::BadUnicode),
+        };
+        val = (val << 4) | v;
+    }
+    Ok((val, start + 3))
 }
 
 #[cfg(any(test, feature = "test_utils"))]
@@ -389,9 +808,32 @@ mod tests {
 
         proptest! {
             #[test]
-            fn test_filter_round_trip(filter in arb::<Filter>()) {
+            fn test_filter_round_trip_display_parse(filter in arb::<Filter>()) {
                 let serialized = filter.to_string();
-                let deserialized = serialized.parse();
+                let deserialized = serialized.parse(); //
+                let expected = {
+                    let mut work = filter;
+                    loop {
+                        if let Filter::Try(inner) = work.clone() {
+                            if let Filter::Try(nested) = *inner {
+                                work = Filter::Try(nested);
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    work
+                };
+
+                prop_assert_eq!(Ok(expected), deserialized);
+            }
+
+            #[test]
+            fn test_filter_round_trip_dag_cbor(filter in arb::<Filter>()) {
+                let serialized = serde_ipld_dagcbor::to_vec(&filter).unwrap();
+                let deserialized = serde_ipld_dagcbor::from_slice::<Filter>(&serialized);
                 prop_assert_eq!(Ok(filter), deserialized);
             }
         }
