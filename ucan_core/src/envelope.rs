@@ -2,16 +2,13 @@
 
 use ipld_core::ipld::Ipld;
 use serde::{
-    de::{
-        self, value::BorrowedBytesDeserializer, Deserializer, IntoDeserializer, MapAccess,
-        SeqAccess, Visitor,
-    },
+    de::{self, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::SerializeMap,
     Deserialize, Serialize,
 };
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use signature::SignatureEncoding;
-use std::{collections::BTreeMap, fmt, marker::PhantomData};
+use std::{fmt, marker::PhantomData};
 use varsig::{header::Varsig, verify::Verify};
 
 /// Top-level Varsig envelope type.
@@ -64,9 +61,7 @@ impl<
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
 
-                let sig_bytes = if let Ipld::Bytes(bytes) = sig_ipld {
-                    bytes
-                } else {
+                let Ipld::Bytes(sig_bytes) = sig_ipld else {
                     return Err(de::Error::custom("expected signature to be bytes"));
                 };
 
@@ -106,9 +101,8 @@ impl<V: Verify, T: Serialize + for<'de> Deserialize<'de>> Serialize for Envelope
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let payload = serde_value::to_value(&self.payload).map_err(serde::ser::Error::custom)?;
 
-        let payload_map = match payload {
-            serde_value::Value::Map(map) => map,
-            _ => return Err(serde::ser::Error::custom("payload must serialize to a map")),
+        let serde_value::Value::Map(payload_map) = payload else {
+            return Err(serde::ser::Error::custom("payload must serialize to a map"));
         };
 
         // Total length = header (1) + payload (n)

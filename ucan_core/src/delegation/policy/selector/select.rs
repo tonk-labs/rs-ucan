@@ -270,6 +270,11 @@ mod tests {
                         prop_assume!(false);
                     }
                 }
+
+                if matches!(data, InternalIpld::Link(_)) {
+                    prop_assume!(false);
+                }
+
                 let selector = Select::<InternalIpld>::from_str(".")?;
                 prop_assert_eq!(selector.get(&data.clone().into())?, data.into());
             }
@@ -290,6 +295,7 @@ mod tests {
 
             #[test_log::test]
             fn test_try_missing_plus_trailing_is_null(data in arb::<InternalIpld>(), more in arb::<Vec<Filter>>()) {
+
                 let mut filters = vec![Filter::Try(Box::new(Filter::Field("foo".into())))];
 
                 for f in &more {

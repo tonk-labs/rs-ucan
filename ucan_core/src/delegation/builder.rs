@@ -75,6 +75,7 @@ impl<D: Did> DelegationBuilder<D> {
     }
 }
 
+#[allow(private_bounds)]
 impl<
         D: Did,
         Issuer: DidSignerOrUnset,
@@ -319,7 +320,7 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
 
         let (sig, _) = self
             .issuer
-            .try_sign(&DagCborCodec, &self.issuer.signer(), &payload)?;
+            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)?;
 
         let header: Varsig<Issuer, DagCborCodec, super::DelegationPayload<D>> =
             Varsig::new(self.issuer, DagCborCodec);

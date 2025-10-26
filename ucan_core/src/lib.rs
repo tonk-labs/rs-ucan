@@ -31,7 +31,7 @@ pub mod crypto;
 pub mod delegation;
 pub mod did;
 pub mod envelope;
-// pub mod invocation;
+pub mod invocation;
 pub mod number;
 pub mod promise;
 // pub mod receipt; TODO Reenable after first release
@@ -44,4 +44,4 @@ mod ipld;
 mod sealed;
 
 pub use delegation::{builder::DelegationBuilder, Delegation};
-// pub use invocation::{builder::InvocationBuilder, Invocation};
+pub use invocation::{builder::InvocationBuilder, Invocation};

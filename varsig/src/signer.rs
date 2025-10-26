@@ -16,6 +16,7 @@ pub trait Sign: Verify {
     type SignError: Error;
 
     /// Synchronously sign a payload.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip_all)]
     fn try_sign<T, C: Codec<T>>(
         &self,
@@ -48,6 +49,7 @@ pub trait AsyncSign: Verify {
     type AsyncSignError: Error;
 
     /// Asynchronously sign a payload.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip_all)]
     fn try_sign_async<T, C: Codec<T>>(
         &self,

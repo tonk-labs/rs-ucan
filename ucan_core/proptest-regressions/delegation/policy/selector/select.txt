@@ -8,3 +8,4 @@ cc f8a1561513c3b3d7d6c3d7a4fba73ca9eff0a08145dad217c3af98edadec5ae7 # shrinks to
 cc 13005ec06e4b98369024c9282738c9da53b65c3e774ac35f3bfeb679f1378558 # shrinks to data = Float(NaN)
 cc aa0d0d07c8139d29bb1794ed3fe490bfc02c6e78710937bc7413cc5af533b834 # shrinks to data = List([Null]), more = [Try(Try(Values))]
 cc 6dfad5c068c7a0a4c76f411c52591ee8f5ab3f3589a8e143367bc30690c6e164 # shrinks to data = Map({}), more = [Try(Values)]
+cc c23abf11d5d774d3cfb7b384691b93588871583bfa933240a2902f434b79d854 # shrinks to data = Map({"": Link(Cid(QmZXPgb5NxwyJSumn9RuFrPgGhUX6PkMYYfm2Bjye2R3qp)), "^\u{4}&,k//i": Bool(true)}), more = [Try(Field(""))]

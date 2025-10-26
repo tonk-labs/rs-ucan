@@ -12,6 +12,7 @@ use ipld_core::{cid::Cid, ipld::Ipld};
 use std::{collections::BTreeMap, marker::PhantomData};
 
 /// Typesafe builder for [`Delegation`].
+#[allow(private_bounds)]
 #[derive(Default, Debug, Clone)]
 pub struct InvocationBuilder<
     D: Did,
@@ -78,6 +79,7 @@ impl<D: Did> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
     }
 }
 
+#[allow(private_bounds)]
 impl<
         D: Did,
         Issuer: DidOrUnset,

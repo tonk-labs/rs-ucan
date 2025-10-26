@@ -1,4 +1,7 @@
 //! UCAN Delegation
+//!
+//! The spec for UCAN Delegations can be found at
+//! [the GitHub repo](https://github.com/ucan-wg/invocation/).
 
 pub mod builder;
 pub mod policy;
@@ -15,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt::Debug};
 use varsig::verify::Verify;
 
+/// Top-level UCAN Delegation.
 #[derive(Clone)]
 pub struct Delegation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
     Envelope<V, DelegationPayload<D>, <V as Verify>::Signature>,
@@ -130,6 +134,7 @@ use core::fmt;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use std::marker::PhantomData;
 
+#[allow(clippy::too_many_lines)]
 impl<'de, T> Deserialize<'de> for DelegationPayload<T>
 where
     T: Did + Deserialize<'de>,
@@ -207,7 +212,8 @@ where
                                 return Err(de::Error::duplicate_field("command"));
                             }
                             let txt: &str = map.next_value()?;
-                            let cmd: Vec<String> = txt.split('/').map(|c| c.to_string()).collect();
+                            let cmd: Vec<String> =
+                                txt.split('/').map(ToString::to_string).collect();
                             command = Some(cmd);
                         }
                         "pol" => {
@@ -256,6 +262,7 @@ where
                 let issuer = issuer.ok_or_else(|| de::Error::missing_field("issuer"))?;
                 let audience = audience.ok_or_else(|| de::Error::missing_field("audience"))?;
                 let subject = subject.ok_or_else(|| de::Error::missing_field("subject"))?;
+                let nonce = nonce.ok_or_else(|| de::Error::missing_field("nonce"))?;
 
                 Ok(DelegationPayload {
                     issuer,
@@ -266,7 +273,7 @@ where
                     expiration: expiration.unwrap_or(None),
                     not_before: not_before.unwrap_or(None),
                     meta: meta.unwrap_or_default(),
-                    nonce: nonce.expect("FIXME"),
+                    nonce,
                 })
             }
         }
@@ -419,8 +426,8 @@ mod tests {
     #[test]
     fn it_works() -> TestResult {
         let aud = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
-        let sub = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
-        let iss = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
+        let sub = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[1u8; 32]).unwrap());
+        let iss = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[2u8; 32]).unwrap());
 
         let delegation = DelegationBuilder::new()
             .issuer(iss)

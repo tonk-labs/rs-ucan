@@ -6,7 +6,7 @@ use crate::{
     verify::Verify,
 };
 use serde::{Deserialize, Serialize};
-use std::{io::Cursor, marker::PhantomData};
+use std::marker::PhantomData;
 
 #[cfg(feature = "dag_cbor")]
 use serde_ipld_dagcbor::codec::DagCborCodec;
@@ -29,7 +29,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     ///
     /// - `verifier`: The verifier to use for the Varsig header.
     /// - `codec`: The codec to use for encoding the payload.
-    pub fn new(verifier_cfg: V, codec: C) -> Self {
+    pub const fn new(verifier_cfg: V, codec: C) -> Self {
         Varsig {
             verifier_cfg,
             codec,
@@ -38,16 +38,21 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     }
 
     /// Get the verifier for this Varsig header.
-    pub fn verifier_cfg(&self) -> &V {
+    pub const fn verifier_cfg(&self) -> &V {
         &self.verifier_cfg
     }
 
     /// Get the codec for this Varsig header.
-    pub fn codec(&self) -> &C {
+    pub const fn codec(&self) -> &C {
         &self.codec
     }
 
     /// Try to synchronously sign a payload with the provided signing key.
+    ///
+    /// # Errors
+    ///
+    /// If signing fails, a `SignerError` is returned.
+    #[allow(clippy::type_complexity)]
     pub fn try_sign(
         &self,
         sk: &V::Signer,
@@ -58,10 +63,14 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         C: Codec<T>,
         T: Serialize,
     {
-        Ok(self.verifier_cfg.try_sign(&self.codec, &sk, payload)?)
+        self.verifier_cfg.try_sign(&self.codec, sk, payload)
     }
 
     /// Try to asynchronously sign a payload with the provided signing key.
+    ///
+    /// # Errors
+    ///
+    /// If encoding or signing fails, a `SignerError` is returned.
     pub async fn try_sign_async(
         &self,
         sk: &V::AsyncSigner,
@@ -72,13 +81,16 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         C: Codec<T>,
         T: Serialize,
     {
-        Ok(self
-            .verifier_cfg
-            .try_sign_async(&self.codec, &sk, payload)
-            .await?)
+        self.verifier_cfg
+            .try_sign_async(&self.codec, sk, payload)
+            .await
     }
 
     /// Try to verify a signature for some payload.
+    ///
+    /// # Errors
+    ///
+    /// If encoding or signature verification fails, a `VerificationError` is returned.
     pub fn try_verify(
         &self,
         verifier: &V::Verifier,

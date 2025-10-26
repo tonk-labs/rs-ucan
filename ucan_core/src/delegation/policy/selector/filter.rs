@@ -17,7 +17,10 @@ use serde::{
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{fmt, str::FromStr};
+use std::{
+    fmt::{self, Write},
+    str::FromStr,
+};
 
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
@@ -70,8 +73,6 @@ impl Filter {
     }
 }
 
-use std::fmt::Write;
-
 fn write_json_string(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
     f.write_str("\"")?;
     for ch in s.chars() {
@@ -85,7 +86,7 @@ fn write_json_string(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
             '\u{0C}' => f.write_str("\\f")?, // form feed
             c if (c as u32) < 0x20 => {
                 // C0 control → \uXXXX
-                write!(f, "\\u{:04X}", c as u32)?
+                write!(f, "\\u{:04X}", c as u32)?;
             }
             c => f.write_char(c)?,
         }
@@ -435,27 +436,47 @@ impl<'de> Deserialize<'de> for Filter {
     }
 }
 
+/// Errors that can occur while parsing filter text.
 #[derive(Debug, PartialEq, thiserror::Error)]
 pub enum FilterTextError {
+    /// End of input reached unexpectedly.
     #[error("unexpected end of input")]
     Eof,
+
+    /// Expected a specific character, but did not get it.
     #[error("expected closing {0}")]
     Expected(char),
+
+    /// Invalid escape sequence.
     #[error("invalid escape sequence")]
     BadEscape,
-    #[error("invalid unicode escape")]
+
+    /// Invalid unicode
+    #[error("invalid unicode")]
     BadUnicode,
+
+    /// Invalid number.
     #[error("invalid number")]
     BadNumber,
+
+    /// Unexpected trailing input after parsing.
     #[error("trailing input: {0}")]
     Trailing(String),
 }
 
+/// Errors that can occur while parsing a filter.
 #[derive(Debug, Clone, Copy)]
 pub enum FilterParseError {
+    /// End of input reached unexpectedly.
     Eof,
+
+    /// Expected a specific character, but did not get it.
     Expected(char),
+
+    /// Bad escape sequence.
     BadEscape,
+
+    /// Bad unicode escape.
     BadUnicode,
 }
 
@@ -469,9 +490,9 @@ fn hex4(s: &str, start: usize) -> Result<(u16, usize), FilterParseError> {
     for j in 0..4 {
         v = (v << 4)
             | match bs[start + j] {
-                b'0'..=b'9' => (bs[start + j] - b'0') as u16,
-                b'a'..=b'f' => (bs[start + j] - b'a' + 10) as u16,
-                b'A'..=b'F' => (bs[start + j] - b'A' + 10) as u16,
+                b'0'..=b'9' => u16::from(bs[start + j] - b'0'),
+                b'a'..=b'f' => u16::from(bs[start + j] - b'a' + 10),
+                b'A'..=b'F' => u16::from(bs[start + j] - b'A' + 10),
                 _ => return Err(FilterParseError::BadUnicode),
             };
     }
@@ -479,7 +500,9 @@ fn hex4(s: &str, start: usize) -> Result<(u16, usize), FilterParseError> {
 }
 
 /// Parse a JSON string literal starting at a `"`
-/// Returns (decoded_string, rest_after_closing_quote)
+///
+/// # Returns
+/// `(decoded_string, rest_after_closing_quote)`
 fn decode_json_string_literal(input: &str) -> Result<(String, &str), FilterParseError> {
     let b = input.as_bytes();
     if b.first() != Some(&b'"') {
@@ -535,8 +558,8 @@ fn decode_json_string_literal(input: &str) -> Result<(String, &str), FilterParse
                     }
                     'u' => {
                         // \uXXXX (maybe followed by a surrogate pair)
-                        let (cu1, mut next) = hex4(input, i + 1)?;
-                        let u = cu1 as u32;
+                        let (cu1, next) = hex4(input, i + 1)?;
+                        let u = u32::from(cu1);
                         if (0xD800..=0xDBFF).contains(&cu1) {
                             // expect \uDC00–\uDFFF next
                             let bs = input.as_bytes();
@@ -548,7 +571,7 @@ fn decode_json_string_literal(input: &str) -> Result<(String, &str), FilterParse
                                 return Err(FilterParseError::BadUnicode);
                             }
                             let hi = u - 0xD800;
-                            let lo = cu2 as u32 - 0xDC00;
+                            let lo = u32::from(cu2) - 0xDC00;
                             let scalar = 0x10000 + ((hi << 10) | lo);
                             let ch = char::from_u32(scalar).ok_or(FilterParseError::BadUnicode)?;
                             out.push(ch);
@@ -580,27 +603,19 @@ use nom::{
     error::{Error as NomError, ErrorKind},
 };
 
-fn json_string<'a>(input: &'a str) -> IResult<&'a str, String> {
+fn json_string(input: &str) -> IResult<&str, String> {
     match decode_json_string_literal(input) {
         Ok((val, rest)) => Ok((rest, val)),
         Err(FilterParseError::Expected(_)) => {
             Err(nom::Err::Error(NomError::new(input, ErrorKind::Char)))
         }
         Err(FilterParseError::Eof) => Err(nom::Err::Failure(NomError::new(input, ErrorKind::Eof))),
-        Err(FilterParseError::BadEscape) => {
-            Err(nom::Err::Failure(NomError::new(input, ErrorKind::Escaped)))
-        }
-        Err(FilterParseError::BadUnicode) => {
+        Err(FilterParseError::BadEscape | FilterParseError::BadUnicode) => {
             Err(nom::Err::Failure(NomError::new(input, ErrorKind::Escaped)))
         }
     }
 }
 
-// ["..."]  ->  Field(decoded_string)
-fn field_bracket(i: &str) -> IResult<&str, Filter> {
-    let (i, key) = delimited(ch('['), json_string, ch(']')).parse(i)?;
-    Ok((i, Filter::Field(key)))
-}
 impl std::str::FromStr for Filter {
     type Err = nom::Err<ParseError>;
 
@@ -610,161 +625,6 @@ impl std::str::FromStr for Filter {
             (rest, _) => Err(nom::Err::Failure(ParseError::TrailingInput(rest.into()))),
         }
     }
-}
-
-// impl FromStr for Filter {
-//     type Err = nom::Err<ParseError>;
-//
-//     fn from_str(mut s: &str) -> Result<Self, Self::Err> {
-//         // s = s.trim();
-//         match parse(s).map_err(|e| nom::Err::Failure(ParseError::UnknownPattern(e.to_string())))? {
-//             ("", found) => Ok(found),
-//             (rest, _) => Err(nom::Err::Failure(ParseError::TrailingInput(rest.into()))),
-//         }
-//
-//         // // Try suffix '?': <inner>?
-//         // if let Some(inner) = s.strip_suffix('?') {
-//         //     let inner = inner.parse::<Filter>()?;
-//         //     return Ok(Filter::Try(Box::new(inner)));
-//         // }
-//
-//         // // Bracketed forms: [], [123], ["..."]
-//         // if let Some(mut inner) = s.strip_prefix('[') {
-//         //     inner = inner.trim_start();
-//         //     let rest = inner
-//         //         .strip_suffix(']')
-//         //         .ok_or(FilterTextError::Expected(']'))?
-//         //         .trim_end();
-//
-//         //     if rest.is_empty() {
-//         //         return Ok(Filter::Values);
-//         //     }
-//
-//         //     if rest.starts_with('"') {
-//         //         // ["..."] → Field(JSON string)
-//         //         let (val, after) = parse_json_string(rest)?; // after points right after the closing quote
-//         //         if !after.trim().is_empty() {
-//         //             return Err(FilterTextError::Trailing(after.to_owned()));
-//         //         }
-//         //         return Ok(Filter::Field(val));
-//         //     }
-//
-//         //     // [123] → ArrayIndex
-//         //     let i: i32 = rest.parse().map_err(|_| FilterTextError::BadNumber)?;
-//         //     return Ok(Filter::ArrayIndex(i));
-//         // }
-//
-//         // // Dot-form field: .foo
-//         // if let Some(name) = s.strip_prefix('.') {
-//         //     // Optional: you can enforce your "dot identifier" policy here if needed.
-//         //     return Ok(Filter::Field(name.to_string()));
-//         // }
-//
-//         // // Fallback: plain field
-//         // Ok(Filter::Field(s.to_string()))
-//     }
-// }
-
-/// Parse a JSON string literal starting with `"` and return (decoded, rest_after_string)
-fn parse_json_string(input: &str) -> Result<(String, &str), FilterTextError> {
-    let bytes = input.as_bytes();
-    if bytes.first() != Some(&b'"') {
-        return Err(FilterTextError::Expected('"'));
-    }
-
-    let mut out = String::new();
-    let mut i = 1; // skip opening quote
-    while i < bytes.len() {
-        match bytes[i] {
-            b'"' => {
-                // closing quote
-                let rest = &input[i + 1..];
-                return Ok((out, rest));
-            }
-            b'\\' => {
-                i += 1;
-                if i >= bytes.len() {
-                    return Err(FilterTextError::Eof);
-                }
-                match bytes[i] as char {
-                    '"' => out.push('"'),
-                    '\\' => out.push('\\'),
-                    '/' => out.push('/'),
-                    'b' => out.push('\u{0008}'),
-                    'f' => out.push('\u{000C}'),
-                    'n' => out.push('\n'),
-                    'r' => out.push('\r'),
-                    't' => out.push('\t'),
-                    'u' => {
-                        // \uXXXX (hex4), possibly a surrogate pair
-                        let (cu1, n1) = decode_hex4(input, i + 1)?;
-                        i = n1; // n1 is index of the last hex nibble
-                        let u = cu1 as u32;
-
-                        if (0xD800..=0xDBFF).contains(&cu1) {
-                            // high surrogate, expect \uDC00–\uDFFF next
-                            // must be immediately followed by \uXXXX
-                            let after = i + 1;
-                            if input.as_bytes().get(after) != Some(&b'\\')
-                                || input.as_bytes().get(after + 1) != Some(&b'u')
-                            {
-                                return Err(FilterTextError::BadUnicode);
-                            }
-                            let (cu2, n2) = decode_hex4(input, after + 2)?;
-                            if !(0xDC00..=0xDFFF).contains(&cu2) {
-                                return Err(FilterTextError::BadUnicode);
-                            }
-                            i = n2;
-                            let hi = u - 0xD800;
-                            let lo = cu2 as u32 - 0xDC00;
-                            let scalar = 0x10000 + ((hi << 10) | lo);
-                            let ch =
-                                std::char::from_u32(scalar).ok_or(FilterTextError::BadUnicode)?;
-                            out.push(ch);
-                        } else if (0xDC00..=0xDFFF).contains(&cu1) {
-                            // unexpected lone low surrogate
-                            return Err(FilterTextError::BadUnicode);
-                        } else {
-                            let ch = std::char::from_u32(u).ok_or(FilterTextError::BadUnicode)?;
-                            out.push(ch);
-                        }
-                        // `i` already advanced by decode_hex4 plus any surrogate pair handling
-                        continue;
-                    }
-                    _ => return Err(FilterTextError::BadEscape),
-                }
-            }
-            b => {
-                // regular UTF-8 char; validate and push
-                let c = input[i..].chars().next().ok_or(FilterTextError::Eof)?;
-                out.push(c);
-                i += c.len_utf8();
-                continue;
-            }
-        }
-        i += 1;
-    }
-    Err(FilterTextError::Eof)
-}
-
-/// Decode exactly 4 hex digits at `start` (byte index into `s`) → (u16_value, last_index_of_hex)
-fn decode_hex4(s: &str, start: usize) -> Result<(u16, usize), FilterTextError> {
-    let bs = s.as_bytes();
-    if start + 3 >= bs.len() {
-        return Err(FilterTextError::Eof);
-    }
-    let mut val: u16 = 0;
-    for j in 0..4 {
-        let b = bs[start + j];
-        let v = match b {
-            b'0'..=b'9' => (b - b'0') as u16,
-            b'a'..=b'f' => (b - b'a' + 10) as u16,
-            b'A'..=b'F' => (b - b'A' + 10) as u16,
-            _ => return Err(FilterTextError::BadUnicode),
-        };
-        val = (val << 4) | v;
-    }
-    Ok((val, start + 3))
 }
 
 #[cfg(any(test, feature = "test_utils"))]

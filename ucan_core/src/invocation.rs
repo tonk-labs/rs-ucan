@@ -1,4 +1,7 @@
 //! UCAN Invocation
+//!
+//! The spec for UCAN Invocations can be found at
+//! [the GitHub repo](https://github.com/ucan-wg/invocation/).
 
 pub mod builder;
 
@@ -12,6 +15,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt::Debug};
 use varsig::verify::Verify;
 
+/// Top-level UCAN Invocation.
+///
+/// This is the token that commands the receiver to perform some action.
+/// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
 pub struct Invocation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
     Envelope<V, InvocationPayload<D>, <V as Verify>::Signature>,
