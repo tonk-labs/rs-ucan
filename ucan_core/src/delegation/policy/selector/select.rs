@@ -127,7 +127,6 @@ impl<T: Selectable> Select<T> {
                                         ))
                                         .cloned()
                                 }
-                                // FIXME Maps grab value in sort order?
                                 _ => Err((
                                     is_try,
                                     SelectorError::from_refs(

@@ -1155,7 +1155,6 @@ mod tests {
             Ok(())
         }
 
-        // FIXME nested, too
         #[test_log::test]
         fn test_all() -> TestResult {
             let p = Predicate::All(
@@ -1184,7 +1183,6 @@ mod tests {
             Ok(())
         }
 
-        // FIXME nested, too
         #[test_log::test]
         fn test_any_all_succeed() -> TestResult {
             let p = Predicate::Any(
@@ -1295,7 +1293,6 @@ mod tests {
             Ok(())
         }
 
-        // FIXME
         #[test_log::test]
         fn test_alternate_any_and_all() -> TestResult {
             // ["any", ".a", ["all", ".b[]", ["==", ".", 0]]]
@@ -1330,7 +1327,6 @@ mod tests {
             Ok(())
         }
 
-        // FIXME
         #[test_log::test]
         fn test_alternate_fail_any_and_all() -> TestResult {
             // ["any", ".a", ["all", ".b[]", ["==", ".", 0]]]

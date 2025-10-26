@@ -4,6 +4,7 @@ use super::error::{NumberIsNotATimestamp, OutOfRangeError};
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
@@ -150,15 +151,28 @@ impl From<Timestamp> for Ipld {
 }
 
 impl TryFrom<Ipld> for Timestamp {
-    type Error = (); // FIXME
+    type Error = TimestampFromIpldError;
 
     fn try_from(ipld: Ipld) -> Result<Self, Self::Error> {
         match ipld {
-            // FIXME do bounds checking
-            Ipld::Integer(secs) => secs.try_into().map_err(|_| ()),
-            _ => Err(()),
+            Ipld::Integer(secs) => secs
+                .try_into()
+                .map_err(TimestampFromIpldError::NotATimestamp),
+            _ => Err(TimestampFromIpldError::TimestampIsNotAnInteger),
         }
     }
+}
+
+/// Errors when an IPLD value is not a valid timestamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TimestampFromIpldError {
+    /// The IPLD value was not an integer.
+    #[error("the timestamp is not an integer")]
+    TimestampIsNotAnInteger,
+
+    /// The integer could not be converted to a timestamp.
+    #[error("the timestamp is out of bounds (2^53)")]
+    NotATimestamp(#[from] NumberIsNotATimestamp),
 }
 
 impl From<Timestamp> for i128 {

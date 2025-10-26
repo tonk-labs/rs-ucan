@@ -5,6 +5,7 @@
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::{fmt, hash::Hash};
+use thiserror::Error;
 
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::Arbitrary;
@@ -112,7 +113,7 @@ impl From<Nonce> for Ipld {
 }
 
 impl TryFrom<Ipld> for Nonce {
-    type Error = (); // FIXME
+    type Error = NoncesMustBeBytes;
 
     #[allow(clippy::expect_used)]
     fn try_from(ipld: Ipld) -> Result<Self, Self::Error> {
@@ -125,10 +126,15 @@ impl TryFrom<Ipld> for Nonce {
                 _ => Ok(Nonce::Custom(v)),
             }
         } else {
-            Err(())
+            Err(NoncesMustBeBytes)
         }
     }
 }
+
+/// Error indicating that nonces must be byte arrays
+#[derive(Debug, Clone, Copy, Error)]
+#[error("nonces must be byte arrays")]
+pub struct NoncesMustBeBytes;
 
 impl Hash for Nonce {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -145,7 +151,6 @@ mod test {
 
     use super::*;
 
-    // FIXME prop test with lots of inputs
     #[test]
     fn ipld_roundtrip_16() -> TestResult {
         let gen = Nonce::generate_16()?;

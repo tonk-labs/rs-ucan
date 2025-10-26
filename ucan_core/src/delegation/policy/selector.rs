@@ -164,16 +164,6 @@ mod tests {
         use proptest::prelude::*;
         use proptest_arbitrary_interop::arb;
 
-        // FIXME doesn't round trip because it (correctly) simplifies round trips
-        // proptest! {
-        //     #[test]
-        //     fn test_selector_round_trip(sel in arb::<Selector>()) {
-        //         let serialized = sel.to_string();
-        //         let deserialized = serialized.parse();
-        //         prop_assert_eq!(Ok(sel), deserialized);
-        //     }
-        // }
-
         #[test_log::test]
         fn test_bare_dot() -> TestResult {
             pretty::assert_eq!(Selector::from_str("."), Ok(Selector(vec![])));
