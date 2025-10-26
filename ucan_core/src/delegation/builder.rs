@@ -3,7 +3,7 @@
 use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
+    did::DidSigner,
     envelope::{Envelope, EnvelopePayload},
     sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset, DidSignerOrUnset},
     time::timestamp::Timestamp,

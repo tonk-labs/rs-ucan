@@ -2,13 +2,13 @@
 
 use crate::codec::Codec;
 use signature::{SignatureEncoding, Verifier};
-use std::error::Error;
+use std::{error::Error, fmt::Debug};
 use thiserror::Error;
 
 /// A trait for signature verification (e.g. public keys).
 pub trait Verify: Sized {
     /// The signature type for the header.
-    type Signature: SignatureEncoding;
+    type Signature: SignatureEncoding + Debug;
 
     /// The associated signer (referenced or owned signing key for the header).
     type Verifier: Verifier<Self::Signature>;

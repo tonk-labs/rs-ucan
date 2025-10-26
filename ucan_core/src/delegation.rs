@@ -88,10 +88,7 @@ impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Delegation<D> {
     }
 }
 
-impl<D: DidSigner + Serialize + for<'de> Deserialize<'de> + Debug> Debug for Delegation<D>
-where
-    <<D::Did as Did>::VarsigConfig as Verify>::Signature: Debug,
-{
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de> + Debug> Debug for Delegation<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
@@ -120,7 +117,7 @@ where
 ///
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)] // FIXME serializer field names
 pub struct DelegationPayload<D: Did> {
     pub(crate) issuer: D,
     pub(crate) audience: D,
@@ -137,10 +134,7 @@ pub struct DelegationPayload<D: Did> {
 }
 
 #[allow(clippy::too_many_lines)]
-impl<'de, T> Deserialize<'de> for DelegationPayload<T>
-where
-    T: Did + Deserialize<'de>,
-{
+impl<'de, T: Did> Deserialize<'de> for DelegationPayload<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -164,10 +158,7 @@ where
 
         struct DelegationPayloadVisitor<T>(PhantomData<T>);
 
-        impl<'de, T> Visitor<'de> for DelegationPayloadVisitor<T>
-        where
-            T: Did + Deserialize<'de>,
-        {
+        impl<'de, T: Did> Visitor<'de> for DelegationPayloadVisitor<T> {
             type Value = DelegationPayload<T>;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

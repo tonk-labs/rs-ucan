@@ -3,7 +3,7 @@
 use ipld_core::ipld::Ipld;
 use serde::{
     de::{self, Deserializer, MapAccess, SeqAccess, Visitor},
-    ser::SerializeMap,
+    ser::{SerializeMap, SerializeTuple},
     Deserialize, Serialize,
 };
 use serde_ipld_dagcbor::codec::DagCborCodec;
@@ -12,7 +12,7 @@ use std::{fmt, marker::PhantomData};
 use varsig::{header::Varsig, verify::Verify};
 
 /// Top-level Varsig envelope type.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Envelope<
     V: Verify<Signature = S>,
     T: Serialize + for<'ze> Deserialize<'ze>,
@@ -23,6 +23,17 @@ pub struct Envelope<
     /// Varsig envelope
     pub EnvelopePayload<V, T>,
 );
+
+impl<V: Verify<Signature = S>, T: Serialize + for<'ze> Deserialize<'ze>, S: SignatureEncoding>
+    Serialize for Envelope<V, T, S>
+{
+    fn serialize<Ser: serde::Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+        let mut seq = serializer.serialize_tuple(2)?;
+        seq.serialize_element(self.0.to_bytes().as_ref())?;
+        seq.serialize_element(&self.1)?;
+        seq.end()
+    }
+}
 
 impl<
         'de,
