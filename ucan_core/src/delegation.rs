@@ -9,22 +9,33 @@ pub mod subject;
 
 use self::subject::DelegatedSubject;
 use crate::{
-    crypto::nonce::Nonce, did::Did, envelope::Envelope, time::timestamp::Timestamp, unset::Unset,
+    crypto::nonce::Nonce,
+    did::{Did, DidSigner},
+    envelope::Envelope,
+    time::timestamp::Timestamp,
+    unset::Unset,
 };
 use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt::Debug};
+use serde::{
+    de::{self, Deserializer, MapAccess, Visitor},
+    Deserialize, Serialize,
+};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Debug},
+    marker::PhantomData,
+};
 use varsig::verify::Verify;
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
-pub struct Delegation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
-    Envelope<V, DelegationPayload<D>, <V as Verify>::Signature>,
+pub struct Delegation<D: DidSigner + Serialize + for<'de> Deserialize<'de>>(
+    Envelope<D, DelegationPayload<D::Did>, <D as Verify>::Signature>,
 );
 
-impl<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>> Delegation<V, D> {
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Delegation<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
@@ -32,17 +43,17 @@ impl<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>> Delegation<V, D>
     }
 
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D {
+    pub const fn issuer(&self) -> &D::Did {
         &self.0 .1.payload.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D {
+    pub const fn audience(&self) -> &D::Did {
         &self.0 .1.payload.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D> {
+    pub const fn subject(&self) -> &DelegatedSubject<D::Did> {
         &self.0 .1.payload.subject
     }
 
@@ -77,21 +88,16 @@ impl<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>> Delegation<V, D>
     }
 }
 
-impl<V: Verify + Debug, D: Did + Serialize + for<'de> Deserialize<'de> + Debug> Debug
-    for Delegation<V, D>
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de> + Debug> Debug for Delegation<D>
 where
-    <V as Verify>::Signature: Debug,
+    <<D::Did as Did>::VarsigConfig as Verify>::Signature: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
 }
 
-impl<V: Verify + Serialize, D: Did + Serialize + for<'de> Deserialize<'de>> Serialize
-    for Delegation<V, D>
-where
-    <V as Verify>::Signature: Serialize,
-{
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Serialize for Delegation<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -100,10 +106,9 @@ where
     }
 }
 
-impl<'de, V: Verify + Deserialize<'de>, I: Did + Serialize + for<'ze> Deserialize<'ze>>
-    Deserialize<'de> for Delegation<V, I>
+impl<'de, I: DidSigner + Serialize + for<'ze> Deserialize<'ze>> Deserialize<'de> for Delegation<I>
 where
-    <V as Verify>::Signature: for<'xe> Deserialize<'xe>,
+    <I as Verify>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -130,9 +135,6 @@ pub struct DelegationPayload<D: Did> {
     pub(crate) meta: BTreeMap<String, Ipld>,
     pub(crate) nonce: Nonce,
 }
-use core::fmt;
-use serde::de::{self, Deserializer, MapAccess, Visitor};
-use std::marker::PhantomData;
 
 #[allow(clippy::too_many_lines)]
 impl<'de, T> Deserialize<'de> for DelegationPayload<T>
@@ -283,12 +285,6 @@ where
 }
 
 impl<D: Did> DelegationPayload<D> {
-    /// Creates a blank [`DelegationBuilder`] instance.
-    #[must_use]
-    pub const fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
-        DelegationBuilder::new()
-    }
-
     /// Getter for the `issuer` field.
     pub const fn issuer(&self) -> &D {
         &self.issuer
@@ -337,97 +333,17 @@ impl<D: Did> DelegationPayload<D> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use testresult::TestResult;
-    use varsig::signer::Sign;
-
-    use crate::did::DidSigner;
-
     use super::*;
+    use testresult::TestResult;
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct EdKey(ed25519_dalek::VerifyingKey);
 
-    impl std::fmt::Display for EdKey {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "did:key:FIXME")
-        }
-    }
-
-    impl FromStr for EdKey {
-        type Err = ();
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            let parts: Vec<&str> = s.split(':').collect();
-            if parts.len() != 3 || parts[0] != "did" || parts[1] != "key" {
-                return Err(());
-            }
-            todo!("FIXME");
-            // let key_bytes = base64::decode(parts[2]).map_err(|_| ())?;
-            // let key = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes).map_err(|_| ())?;
-            // Ok(EdKey(key))
-        }
-    }
-
-    impl Verify for EdKey {
-        type Signature = ed25519_dalek::Signature;
-        type Verifier = ed25519_dalek::VerifyingKey;
-
-        fn prefix(&self) -> u64 {
-            0xED
-        }
-
-        fn config_tags(&self) -> Vec<u64> {
-            vec![]
-        }
-
-        fn try_from_tags(_bytes: &[u64]) -> Option<(Self, &[u64])> {
-            // FIXME implement
-            None
-        }
-    }
-
-    impl Did for EdKey {
-        fn did_method(&self) -> &str {
-            "key"
-        }
-    }
-
-    impl Sign for EdKey {
-        type Signer = ed25519_dalek::SigningKey;
-        type SignError = signature::Error;
-
-        fn try_sign<T, C: varsig::codec::Codec<T>>(
-            &self,
-            _codec: &C,
-            _signer: &Self::Signer,
-            _payload: &T,
-        ) -> Result<
-            (Self::Signature, Vec<u8>),
-            varsig::signer::SignerError<C::EncodingError, Self::SignError>,
-        > {
-            todo!("FIXME implement signing")
-        }
-    }
-
-    impl DidSigner for EdKey {
-        type Did = Self;
-
-        fn did(&self) -> &Self {
-            self
-        }
-
-        fn signer(&self) -> &Self::Signer {
-            todo!()
-        }
-    }
-
     #[test]
-    fn it_works() -> TestResult {
-        let aud = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
-        let sub = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[1u8; 32]).unwrap());
-        let iss = EdKey(ed25519_dalek::VerifyingKey::from_bytes(&[2u8; 32]).unwrap());
+    fn issuer_round_trip() -> TestResult {
+        let iss = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]);
+        let aud = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
+        let sub = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
 
         let delegation = DelegationBuilder::new()
             .issuer(iss)
@@ -435,6 +351,8 @@ mod tests {
             .subject(DelegatedSubject::Specific(sub))
             .command(vec!["read".to_string(), "write".to_string()])
             .try_build()?;
+
+        dbg!(&delegation.issuer().to_string());
 
         assert_eq!(delegation.issuer().to_string(), "did:example:alice");
         Ok(())

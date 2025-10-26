@@ -1,7 +1,7 @@
 //! Subject of a delegation
 
 use crate::did::Did;
-use serde::{ser::Serializer, Deserialize, Serialize};
+use serde::{de::Deserialize, ser::Serializer, Serialize};
 use std::fmt::Display;
 
 /// The Subject of a delegation
@@ -31,7 +31,7 @@ impl<D: Did> From<D> for DelegatedSubject<D> {
 impl<D: Did + Display> Display for DelegatedSubject<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DelegatedSubject::Specific(did) => did.fmt(f),
+            DelegatedSubject::Specific(did) => Display::fmt(did, f),
             DelegatedSubject::Any => "*".fmt(f),
         }
     }
@@ -46,7 +46,7 @@ impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
     }
 }
 
-impl<'de, I: Did + Deserialize<'de>> serde::Deserialize<'de> for DelegatedSubject<I> {
+impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = serde_value::Value::deserialize(deserializer)?;
 

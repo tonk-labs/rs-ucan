@@ -33,6 +33,44 @@ pub enum InternalIpld {
     Link(Cid),
 }
 
+// Helps with tests
+#[allow(dead_code)]
+pub(crate) fn eq_with_float_nans_and_infinities(a: &InternalIpld, b: &InternalIpld) -> bool {
+    match (a, b) {
+        (InternalIpld::Float(x), InternalIpld::Float(y)) => {
+            (x.is_nan() && y.is_nan()) || x.is_infinite() && y.is_infinite() || (x == y)
+        }
+        (InternalIpld::List(a_list), InternalIpld::List(b_list)) => {
+            if a_list.len() != b_list.len() {
+                return false;
+            }
+            for (a_item, b_item) in a_list.iter().zip(b_list.iter()) {
+                if !eq_with_float_nans_and_infinities(a_item, b_item) {
+                    return false;
+                }
+            }
+            true
+        }
+        (InternalIpld::Map(a_map), InternalIpld::Map(b_map)) => {
+            if a_map.len() != b_map.len() {
+                return false;
+            }
+            for (key, a_value) in a_map.iter() {
+                match b_map.get(key) {
+                    Some(b_value) => {
+                        if !eq_with_float_nans_and_infinities(a_value, b_value) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+            true
+        }
+        _ => a == b,
+    }
+}
+
 impl From<InternalIpld> for Ipld {
     fn from(value: InternalIpld) -> Self {
         match value {

@@ -240,44 +240,19 @@ mod tests {
 
     mod get {
         use super::*;
+        use crate::ipld::eq_with_float_nans_and_infinities;
         use proptest::prelude::*;
         use proptest_arbitrary_interop::arb;
-
-        // fn nested_data() -> Ipld {
-        //     Ipld::Map(
-        //         vec![
-        //             ("name".to_string(), Ipld::String("Alice".to_string())),
-        //             ("age".to_string(), Ipld::Integer(42)),
-        //             (
-        //                 "friends".to_string(),
-        //                 Ipld::List(vec![
-        //                     Ipld::String("Bob".to_string()),
-        //                     Ipld::String("Charlie".to_string()),
-        //                 ]),
-        //             ),
-        //         ]
-        //         .into_iter()
-        //         .collect(),
-        //     )
-        // }
 
         proptest! {
             #[test_log::test]
             fn test_identity(data in arb::<InternalIpld>()) {
-                if let InternalIpld::Float(f) = data {
-                    if f.is_nan() {
-                        prop_assume!(false);
-                    }
-                }
-
-                if matches!(data, InternalIpld::Link(_)) {
-                    prop_assume!(false);
-                }
-
                 let selector = Select::<InternalIpld>::from_str(".")?;
-                prop_assert_eq!(selector.get(&data.clone().into())?, data.into());
+                prop_assert!(eq_with_float_nans_and_infinities(&selector.get(&data.clone().into())?.into(), &data));
             }
+        }
 
+        proptest! {
             #[test_log::test]
             fn test_try_missing_is_null(data in arb::<InternalIpld>()) {
                 let selector = Select::<Ipld>::from_str(".foo?")?;
@@ -291,23 +266,16 @@ mod tests {
 
                 prop_assert_eq!(selector.get(&cleaned_data)?, Ipld::Null);
             }
+        }
 
+        proptest! {
             #[test_log::test]
             fn test_try_missing_plus_trailing_is_null(data in arb::<InternalIpld>(), more in arb::<Vec<Filter>>()) {
-
                 let mut filters = vec![Filter::Try(Box::new(Filter::Field("foo".into())))];
 
                 for f in &more {
-                    if let Filter::Try(inner) = f {
-                        let mut work = *inner.clone();
-                        loop {
-                            if let Filter::Try(nested) = work {
-                                work = *nested;
-                            } else {
-                                break;
-                            }
-                        }
-                        filters.push(Filter::Try(Box::new(work)));
+                    if let Filter::Try(_inner) = f {
+                        // Noop
                     } else {
                         filters.push(f.clone());
                     }

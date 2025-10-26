@@ -13,12 +13,12 @@ use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use serde_ipld_dagcbor::{codec::DagCborCodec, error::CodecError};
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{signer::SignerError, Varsig};
+use varsig::{signer::SignerError, verify::Verify, Varsig};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
 pub struct DelegationBuilder<
-    D: Did,
+    D: DidSigner,
     Issuer: DidSignerOrUnset = Unset,
     Audience: DidOrUnset = Unset,
     Subject: DelegatedSubjectOrUnset = Unset,
@@ -56,7 +56,7 @@ pub struct DelegationBuilder<
     _did: PhantomData<D>,
 }
 
-impl<D: Did> DelegationBuilder<D> {
+impl<D: DidSigner> DelegationBuilder<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn new() -> Self {
@@ -77,7 +77,7 @@ impl<D: Did> DelegationBuilder<D> {
 
 #[allow(private_bounds)]
 impl<
-        D: Did,
+        D: DidSigner,
         Issuer: DidSignerOrUnset,
         Audience: DidOrUnset,
         Subject: DelegatedSubjectOrUnset,
@@ -86,10 +86,7 @@ impl<
 {
     /// Sets the `issuer` field of the delegation.
     #[must_use]
-    pub fn issuer<I: DidSigner<Did = D>>(
-        self,
-        issuer: I,
-    ) -> DelegationBuilder<D, I, Audience, Subject, Command> {
+    pub fn issuer(self, issuer: D) -> DelegationBuilder<D, D, Audience, Subject, Command> {
         DelegationBuilder {
             issuer,
             audience: self.audience,
@@ -106,7 +103,10 @@ impl<
 
     /// Sets the `audience` field of the delegation.
     #[must_use]
-    pub fn audience(self, audience: D) -> DelegationBuilder<D, Issuer, D, Subject, Command> {
+    pub fn audience(
+        self,
+        audience: D::Did,
+    ) -> DelegationBuilder<D, Issuer, D::Did, Subject, Command> {
         DelegationBuilder {
             issuer: self.issuer,
             audience,
@@ -125,8 +125,8 @@ impl<
     #[must_use]
     pub fn subject(
         self,
-        subject: DelegatedSubject<D>,
-    ) -> DelegationBuilder<D, Issuer, Audience, DelegatedSubject<D>, Command> {
+        subject: DelegatedSubject<D::Did>,
+    ) -> DelegationBuilder<D, Issuer, Audience, DelegatedSubject<D::Did>, Command> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -260,8 +260,8 @@ impl<
 }
 
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<Did = D>>
-    DelegationBuilder<D, Issuer, D, DelegatedSubject<D>, Vec<String>>
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>>
+    DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Vec<String>>
 {
     /// Builds an (unsigned) [`DelegationPayload`].
     ///
@@ -273,7 +273,7 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn into_payload(self) -> super::DelegationPayload<D> {
+    pub fn into_payload(self) -> super::DelegationPayload<D::Did> {
         super::DelegationPayload {
             issuer: self.issuer.did().clone(),
             audience: self.audience,
@@ -301,10 +301,8 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn try_build(
-        self,
-    ) -> Result<super::Delegation<Issuer, D>, SignerError<CodecError, Issuer::SignError>> {
-        let payload: super::DelegationPayload<D> = super::DelegationPayload {
+    pub fn try_build(self) -> Result<super::Delegation<D>, SignerError<CodecError, D::SignError>> {
+        let payload: super::DelegationPayload<D::Did> = super::DelegationPayload {
             issuer: self.issuer.did().clone(),
             audience: self.audience,
             subject: self.subject,
@@ -322,12 +320,19 @@ impl<D: Clone + Did + Serialize + for<'de> Deserialize<'de>, Issuer: DidSigner<D
             .issuer
             .try_sign(&DagCborCodec, self.issuer.signer(), &payload)?;
 
-        let header: Varsig<Issuer, DagCborCodec, super::DelegationPayload<D>> =
-            Varsig::new(self.issuer, DagCborCodec);
+        let config: D = self.issuer;
 
-        Ok(super::Delegation(Envelope(
-            sig,
-            EnvelopePayload { header, payload },
-        )))
+        let header: Varsig<D, DagCborCodec, super::DelegationPayload<D::Did>> =
+            Varsig::new(config, DagCborCodec);
+
+        let payload: EnvelopePayload<D, super::DelegationPayload<D::Did>> =
+            EnvelopePayload { header, payload };
+
+        let envelope: Envelope<D, super::DelegationPayload<D::Did>, <D as Verify>::Signature> =
+            Envelope(sig, payload);
+
+        let delegation: super::Delegation<D> = super::Delegation(envelope);
+
+        Ok(delegation)
     }
 }

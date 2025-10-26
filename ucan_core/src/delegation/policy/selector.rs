@@ -161,8 +161,6 @@ mod tests {
 
     mod serialization {
         use super::*;
-        use proptest::prelude::*;
-        use proptest_arbitrary_interop::arb;
 
         #[test_log::test]
         fn test_bare_dot() -> TestResult {

@@ -8,15 +8,23 @@ use varsig::{signature::eddsa::Ed25519, signer::Sign, verify::Verify};
 /// A trait for [DID]s.
 ///
 /// [DID]: https://en.wikipedia.org/wiki/Decentralized_identifier
-pub trait Did: PartialEq + ToString + FromStr + Verify {
+pub trait Did:
+    PartialEq + ToString + FromStr + Serialize + for<'de> Deserialize<'de> + Debug
+{
+    /// The associated `Varsig` configuration.
+    type VarsigConfig: Verify + Clone;
+
     /// Get the DID method header (e.g. `key` for `did-keys`)
     fn did_method(&self) -> &str;
+
+    /// Get the associated `Varsig` configuration.
+    fn varsig_config(&self) -> &Self::VarsigConfig;
 }
 
 /// A trait for DID signers.
 pub trait DidSigner: Sign + Debug {
     /// The associated DID type.
-    type Did: Did;
+    type Did: Did + Clone;
 
     /// Get the associated DID.
     fn did(&self) -> &Self::Did;
@@ -82,28 +90,15 @@ pub enum Ed25519DidFromStrError {
     InvalidKey,
 }
 
-impl Verify for Ed25519Did {
-    type Signature = ed25519_dalek::Signature;
-    type Verifier = ed25519_dalek::VerifyingKey;
-
-    fn prefix(&self) -> u64 {
-        self.1.prefix()
-    }
-
-    fn config_tags(&self) -> Vec<u64> {
-        self.1.config_tags()
-    }
-
-    fn try_from_tags(bytes: &[u64]) -> Option<(Self, &[u64])> {
-        let (v, rest) = Ed25519::try_from_tags(bytes)?;
-        let vk = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).ok()?; // FIXME
-        Some((Ed25519Did(vk, v), rest)) // FIXME that [0u8; 32] should be the actual key
-    }
-}
-
 impl Did for Ed25519Did {
+    type VarsigConfig = Ed25519;
+
     fn did_method(&self) -> &'static str {
         "key"
+    }
+
+    fn varsig_config(&self) -> &Self::VarsigConfig {
+        &self.1
     }
 }
 
@@ -134,39 +129,21 @@ pub struct Ed25519Signer {
     signer: ed25519_dalek::SigningKey,
 }
 
-impl Verify for Ed25519Signer {
-    type Signature = ed25519_dalek::Signature;
-    type Verifier = ed25519_dalek::VerifyingKey;
-
-    fn prefix(&self) -> u64 {
-        self.did.prefix()
+impl Ed25519Signer {
+    /// Create a new `Ed25519Signer` from a signing key.
+    pub fn new(signer: ed25519_dalek::SigningKey) -> Self {
+        let verifying_key = signer.verifying_key();
+        let did = Ed25519Did(verifying_key, Ed25519::new());
+        Self { did, signer }
     }
 
-    fn config_tags(&self) -> Vec<u64> {
-        self.did.config_tags()
-    }
-
-    fn try_from_tags(bytes: &[u64]) -> Option<(Self, &[u64])> {
-        Ed25519Did::try_from_tags(bytes).map(|(did, r)| {
-            let signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]);
-            (Ed25519Signer { did, signer }, r)
-        })
-    }
-}
-
-impl Sign for Ed25519Signer {
-    type Signer = ed25519_dalek::SigningKey;
-    type SignError = signature::Error;
-}
-
-impl DidSigner for Ed25519Signer {
-    type Did = Ed25519Did;
-
-    fn did(&self) -> &Self::Did {
+    /// Get the associated DID.
+    pub fn did(&self) -> &Ed25519Did {
         &self.did
     }
 
-    fn signer(&self) -> &Self::Signer {
+    /// Get the associated signer.
+    pub fn signer(&self) -> &ed25519_dalek::SigningKey {
         &self.signer
     }
 }

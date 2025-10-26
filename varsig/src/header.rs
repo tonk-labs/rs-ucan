@@ -229,6 +229,7 @@ impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
     }
 }
 
+// FIXME?
 // impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
 //     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 //     where
