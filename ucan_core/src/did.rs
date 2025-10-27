@@ -1,6 +1,7 @@
 //! Decentralized Identifier (DID) helpers.
 
 use serde::{Deserialize, Serialize};
+use signature::Signer;
 use std::{fmt::Debug, str::FromStr};
 use thiserror::Error;
 use varsig::{signature::eddsa::Ed25519, signer::Sign, verify::Verify};
@@ -12,7 +13,7 @@ pub trait Did:
     PartialEq + ToString + FromStr + Serialize + for<'de> Deserialize<'de> + Debug
 {
     /// The associated `Varsig` configuration.
-    type VarsigConfig: Verify + Clone;
+    type VarsigConfig: Sign + Clone;
 
     /// Get the DID method header (e.g. `key` for `did-keys`)
     fn did_method(&self) -> &str;
@@ -22,15 +23,15 @@ pub trait Did:
 }
 
 /// A trait for DID signers.
-pub trait DidSigner: Sign + Debug {
+pub trait DidSigner: Did {
     /// The associated DID type.
     type Did: Did + Clone;
 
     /// Get the associated DID.
     fn did(&self) -> &Self::Did;
 
-    /// Get the associated signer.
-    fn signer(&self) -> &Self::Signer;
+    /// Get the associated signer instance.
+    fn signer(&self) -> &<<Self::Did as Did>::VarsigConfig as Sign>::Signer;
 }
 
 /// An `Ed25519` `did:key`.

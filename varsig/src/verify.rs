@@ -6,7 +6,7 @@ use std::{error::Error, fmt::Debug};
 use thiserror::Error;
 
 /// A trait for signature verification (e.g. public keys).
-pub trait Verify: Sized {
+pub trait Verify: Sized + Debug {
     /// The signature type for the header.
     type Signature: SignatureEncoding + Debug;
 

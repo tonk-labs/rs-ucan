@@ -24,29 +24,30 @@ use varsig::verify::Verify;
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
-pub struct Delegation<D: DidSigner + Serialize + for<'de> Deserialize<'de>>(
-    Envelope<D, DelegationPayload<D::Did>, <D as Verify>::Signature>,
+pub struct Delegation<D: Did>(
+    Envelope<D::VarsigConfig, DelegationPayload<D>, <D::VarsigConfig as Verify>::Signature>,
 );
 
-impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Delegation<D> {
+impl<D: Did> Delegation<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
-    pub const fn builder() -> DelegationBuilder<D, Unset, Unset, Unset, Unset> {
+    pub const fn builder<S: DidSigner<Did = D>>() -> DelegationBuilder<S, Unset, Unset, Unset, Unset>
+    {
         DelegationBuilder::new()
     }
 
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D::Did {
+    pub const fn issuer(&self) -> &D {
         &self.0 .1.payload.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D::Did {
+    pub const fn audience(&self) -> &D {
         &self.0 .1.payload.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D::Did> {
+    pub const fn subject(&self) -> &DelegatedSubject<D> {
         &self.0 .1.payload.subject
     }
 
@@ -81,13 +82,13 @@ impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Delegation<D> {
     }
 }
 
-impl<D: DidSigner + Serialize + for<'de> Deserialize<'de> + Debug> Debug for Delegation<D> {
+impl<D: Did> Debug for Delegation<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
 }
 
-impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Serialize for Delegation<D> {
+impl<D: Did> Serialize for Delegation<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -96,9 +97,9 @@ impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Serialize for Delegat
     }
 }
 
-impl<'de, I: DidSigner + Serialize + for<'ze> Deserialize<'ze>> Deserialize<'de> for Delegation<I>
+impl<'de, I: Did> Deserialize<'de> for Delegation<I>
 where
-    <I as Verify>::Signature: for<'xe> Deserialize<'xe>,
+    <I::VarsigConfig as Verify>::Signature: for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -187,7 +188,7 @@ impl<D: Did> DelegationPayload<D> {
 
 #[cfg(test)]
 mod tests {
-    use crate::did::{Ed25519Did, Ed25519Signer};
+    use crate::did::Ed25519Signer;
 
     use super::*;
     use testresult::TestResult;

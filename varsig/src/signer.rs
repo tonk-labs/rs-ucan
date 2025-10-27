@@ -2,10 +2,10 @@
 
 use async_signature::AsyncSigner;
 use signature::Signer;
-use std::{error::Error, future::Future};
+use std::{error::Error, fmt::Debug, future::Future};
 use thiserror::Error;
 
-use crate::{codec::Codec, signature::eddsa::Ed25519, verify::Verify};
+use crate::{codec::Codec, verify::Verify};
 
 /// Synchronous signing trait.
 pub trait Sign: Verify {
