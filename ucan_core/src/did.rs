@@ -1,7 +1,7 @@
 //! Decentralized Identifier (DID) helpers.
 
 use base58::ToBase58;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use signature::Signer;
 use std::{fmt::Debug, str::FromStr};
 use thiserror::Error;
@@ -131,14 +131,67 @@ impl Serialize for Ed25519Did {
     }
 }
 
+// impl<'de> Deserialize<'de> for Ed25519Did {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         let s = String::deserialize(deserializer)?;
+//         s.parse()
+//             .map_err(|_| serde::de::Error::custom(format!("unable to parse did from string: {s}")))
+//     }
+// }
 impl<'de> Deserialize<'de> for Ed25519Did {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        s.parse()
-            .map_err(|_| serde::de::Error::custom(format!("unable to parse did from string: {s}")))
+        struct DidKeyVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for DidKeyVisitor {
+            type Value = Ed25519Did;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a did:key string containing an ed25519 public key")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                const DID_PREFIX: &str = "did:key:z";
+                const ED25519_PUB: [u8; 2] = [0xED, 0x01];
+
+                if !v.starts_with(DID_PREFIX) {
+                    return Err(E::custom("expected did:key with base58btc (did:key:z…)"));
+                }
+
+                let b58_payload = &v[DID_PREFIX.len()..];
+                let decoded = base58::FromBase58::from_base58(b58_payload)
+                    .map_err(|e| E::custom(format!("base58 decode failed")))?;
+
+                if decoded.len() != 34 {
+                    return Err(E::custom(format!(
+                        "unexpected byte length: got {}, want 34 (2-byte header + 32-byte key)",
+                        decoded.len()
+                    )));
+                }
+                if decoded[0..2] != ED25519_PUB {
+                    return Err(E::custom("not an ed25519-pub multicodec (0xED 0x01)"));
+                }
+
+                let key_bytes: [u8; 32] = decoded[2..]
+                    .try_into()
+                    .expect("slice length verified above");
+
+                Ok(Ed25519Did(
+                    ed25519_dalek::VerifyingKey::from_bytes(&key_bytes).expect("FIXME"),
+                    Ed25519::new(),
+                ))
+            }
+        }
+
+        deserializer.deserialize_str(DidKeyVisitor)
     }
 }
 

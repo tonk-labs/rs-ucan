@@ -18,8 +18,11 @@ use crate::{
 use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt::Debug};
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
 use varsig::verify::Verify;
 
 /// Top-level UCAN Delegation.
@@ -111,8 +114,7 @@ where
 ///
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "D: Did"))]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DelegationPayload<D: Did> {
     #[serde(rename = "iss")]
     pub(crate) issuer: D,
@@ -186,6 +188,176 @@ impl<D: Did> DelegationPayload<D> {
     }
 }
 
+impl<'de, D> Deserialize<'de> for DelegationPayload<D>
+where
+    D: Did,
+    DelegatedSubject<D>: Deserialize<'de>,
+    Predicate: Deserialize<'de>,
+    Timestamp: Deserialize<'de>,
+    Nonce: Deserialize<'de>,
+    Ipld: Deserialize<'de>,
+{
+    fn deserialize<T>(deserializer: T) -> Result<Self, T::Error>
+    where
+        T: Deserializer<'de>,
+    {
+        struct PayloadVisitor<D: Did>(std::marker::PhantomData<D>);
+
+        impl<'de, D> Visitor<'de> for PayloadVisitor<D>
+        where
+            D: Did,
+            DelegatedSubject<D>: Deserialize<'de>,
+            Predicate: Deserialize<'de>,
+            Timestamp: Deserialize<'de>,
+            Nonce: Deserialize<'de>,
+            Ipld: Deserialize<'de>,
+        {
+            type Value = DelegationPayload<D>;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a map with keys iss,aud,sub,cmd,pol,exp,nbf,meta,nonce")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut issuer: Option<D> = None;
+                let mut audience: Option<D> = None;
+                let mut subject: Option<DelegatedSubject<D>> = None;
+                let mut command: Option<Vec<String>> = None;
+                let mut policy: Option<Vec<Predicate>> = None;
+                let mut expiration: Option<Option<Timestamp>> = None;
+                let mut not_before: Option<Option<Timestamp>> = None;
+                let mut meta: BTreeMap<String, Ipld> = BTreeMap::new();
+                let mut nonce: Option<Nonce> = None;
+
+                while let Some(key) = map.next_key::<Cow<'de, str>>()? {
+                    match key.as_ref() {
+                        "iss" => {
+                            if issuer.is_some() {
+                                todo!()
+                                // return Err(custom("duplicate field `iss`"));
+                            }
+                            issuer = Some(map.next_value()?);
+                        }
+                        "aud" => {
+                            if audience.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `aud`"));
+                            }
+                            audience = Some(map.next_value()?);
+                        }
+                        "sub" => {
+                            if subject.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `sub`"));
+                            }
+                            subject = Some(map.next_value()?);
+                        }
+                        "cmd" => {
+                            if command.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `cmd`"));
+                            }
+                            let s: String = map.next_value()?;
+                            command = Some(s.split("/").map(ToString::to_string).collect());
+                        }
+                        "pol" => {
+                            if policy.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `pol`"));
+                            }
+                            policy = Some(map.next_value()?);
+                        }
+                        "exp" => {
+                            if expiration.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `exp`"));
+                            }
+                            expiration = Some(map.next_value()?);
+                        }
+                        "nbf" => {
+                            if not_before.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `nbf`"));
+                            }
+                            not_before = Some(map.next_value()?);
+                        }
+                        "meta" => {
+                            // If the payload already has a meta map, we *merge* into it.
+                            let incoming: BTreeMap<String, Ipld> = map.next_value()?;
+                            for (k, v) in incoming {
+                                // last one wins if duplicated inside meta
+                                meta.insert(k, v);
+                            }
+                        }
+                        "nonce" => {
+                            if nonce.is_some() {
+                                todo!()
+                                // return Err(A::Error::custom("duplicate field `nonce`"));
+                            }
+                            let ipld: Ipld = map.next_value()?;
+                            let v = match ipld {
+                                Ipld::Bytes(b) => b,
+                                _ => {
+                                    // return Err(A::Error::custom(
+                                    //     "nonce field must be bytes",
+                                    // ));
+                                    todo!()
+                                }
+                            };
+                            nonce = Some(if v.len() == 16 {
+                                Nonce::Nonce16(v.try_into().map_err(|e| {
+                                    // A::Error::custom(format!("invalid nonce bytes: {}", e))
+                                    todo!()
+                                })?)
+                            } else {
+                                Nonce::Custom(v)
+                            });
+                        }
+                        other => {
+                            // Unknown field → store in `meta` as IPLD
+                            // If the key already exists in meta, last one wins.
+                            let val: Ipld = map.next_value()?;
+                            meta.insert(other.to_owned(), val);
+                        }
+                    }
+                }
+
+                // Required fields:
+                let issuer = issuer.ok_or_else(
+                    || todo!(), // A::Error::missing_field("iss")
+                )?;
+                let audience =
+                    audience.ok_or_else(|| todo!() /* A::Error::missing_field("aud") */)?;
+                let subject =
+                    subject.ok_or_else(|| todo!() /* A::Error::missing_field("sub") */)?;
+                let command =
+                    command.ok_or_else(|| todo!() /* A::Error::missing_field("cmd") */)?;
+                let policy =
+                    policy.ok_or_else(|| todo!() /* A::Error::missing_field("pol") */)?;
+                let nonce =
+                    nonce.ok_or_else(|| todo!() /* A::Error::missing_field("nonce") */)?;
+
+                Ok(DelegationPayload {
+                    issuer,
+                    audience,
+                    subject,
+                    command,
+                    policy,
+                    expiration: expiration.unwrap_or(None),
+                    not_before: not_before.unwrap_or(None),
+                    meta,
+                    nonce,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(PayloadVisitor::<D>(std::marker::PhantomData))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::did::{Ed25519Did, Ed25519Signer};
@@ -219,8 +391,6 @@ mod tests {
             .command(vec!["read".to_string(), "write".to_string()]);
 
         let delegation = builder.try_build()?;
-
-        dbg!(&delegation.issuer().to_string());
 
         assert_eq!(delegation.issuer().to_string(), iss.to_string());
         Ok(())

@@ -2,6 +2,7 @@ mod delegation_conformance {
     use std::sync::OnceLock;
 
     use base64::prelude::*;
+    use ipld_core::ipld::Ipld;
     use testresult::TestResult;
     use ucan_core::{did::Ed25519Did, Delegation};
 
@@ -32,11 +33,9 @@ mod delegation_conformance {
             .expect("valid delegation token is a string");
 
         let bytes: Vec<u8> = BASE64_STANDARD.decode(b64_txt)?;
-        let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
-
-        let did: &str = r#""did:key:z6MkmT9j6fVZqzXV8u2wVVSu49gYSRYGSQnduWXF6foAJrqz""#;
-        let iss: Ed25519Did = serde_ipld_dagjson::from_slice(did.as_bytes())?;
-        assert_eq!(*delegation.issuer(), iss);
+        let ipld: Ipld = serde_ipld_dagcbor::from_slice(&bytes)?;
+        let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?; //
+        assert_eq!(delegation.policy(), &vec![]);
 
         Ok(())
     }

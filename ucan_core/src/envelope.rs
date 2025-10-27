@@ -83,8 +83,6 @@ impl<
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
 
-                // FIXME prevent extra fields
-
                 Ok(Envelope(signature, payload))
             }
         }
