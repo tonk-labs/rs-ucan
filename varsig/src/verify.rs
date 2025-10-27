@@ -11,7 +11,7 @@ pub trait Verify: Sized {
     type Signature: SignatureEncoding + Debug;
 
     /// The associated signer (referenced or owned signing key for the header).
-    type Verifier: Verifier<Self::Signature>;
+    type Verifier: Verifier<Self::Signature> + Debug;
 
     /// The prefix for the signature type.
     ///

@@ -2,21 +2,25 @@
 
 use crate::{
     crypto::nonce::Nonce,
-    did::Did,
+    did::DidSigner,
+    envelope::{Envelope, EnvelopePayload},
     promise::Promised,
-    sealed::{CommandOrUnset, DidOrUnset, ProofsOrUnset},
+    sealed::{CommandOrUnset, DidOrUnset, DidSignerOrUnset, ProofsOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
+use serde::{Deserialize, Serialize};
+use serde_ipld_dagcbor::{codec::DagCborCodec, error::CodecError};
 use std::{collections::BTreeMap, marker::PhantomData};
+use varsig::{signer::SignerError, verify::Verify, Varsig};
 
 /// Typesafe builder for [`Delegation`].
 #[allow(private_bounds)]
 #[derive(Default, Debug, Clone)]
 pub struct InvocationBuilder<
-    D: Did,
-    Issuer: DidOrUnset = Unset,
+    D: DidSigner,
+    Issuer: DidSignerOrUnset = Unset,
     Audience: DidOrUnset = Unset,
     Subject: DidOrUnset = Unset,
     Command: CommandOrUnset = Unset,
@@ -58,7 +62,7 @@ pub struct InvocationBuilder<
     _did: PhantomData<D>,
 }
 
-impl<D: Did> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
+impl<D: DidSigner> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
     /// Creates a blank [`InvocationBuilder`] instance.
     #[must_use]
     pub const fn new() -> Self {
@@ -81,8 +85,8 @@ impl<D: Did> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
 
 #[allow(private_bounds)]
 impl<
-        D: Did,
-        Issuer: DidOrUnset,
+        D: DidSigner,
+        Issuer: DidSignerOrUnset,
         Audience: DidOrUnset,
         Subject: DidOrUnset,
         Command: CommandOrUnset,
@@ -112,8 +116,8 @@ impl<
     #[must_use]
     pub fn audience(
         self,
-        audience: D,
-    ) -> InvocationBuilder<D, Issuer, D, Subject, Command, Proofs> {
+        audience: D::Did,
+    ) -> InvocationBuilder<D, Issuer, D::Did, Subject, Command, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience,
@@ -132,7 +136,10 @@ impl<
 
     /// Sets the `subject` field of the invocation.
     #[must_use]
-    pub fn subject(self, subject: D) -> InvocationBuilder<D, Issuer, Audience, D, Command, Proofs> {
+    pub fn subject(
+        self,
+        subject: D::Did,
+    ) -> InvocationBuilder<D, Issuer, Audience, D::Did, Command, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -324,7 +331,9 @@ impl<
 }
 
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: Did> InvocationBuilder<D, D, D, D, Vec<String>, Vec<Cid>> {
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>>
+    InvocationBuilder<D, D, D::Did, D::Did, Vec<String>, Vec<Cid>>
+{
     /// Builds the [`Delegation`] instance from the builder.
     ///
     /// This is typesafe, and only possible to call when all required fields are set.
@@ -335,9 +344,9 @@ impl<D: Did> InvocationBuilder<D, D, D, D, Vec<String>, Vec<Cid>> {
     /// This will never happen if a nonce is provided, and is not recoverable
     /// becuase a broken RNG is a serious problem.
     #[allow(clippy::expect_used)]
-    pub fn build(self) -> super::InvocationPayload<D> {
+    pub fn build(self) -> super::InvocationPayload<D::Did> {
         super::InvocationPayload {
-            issuer: self.issuer,
+            issuer: self.issuer.did().clone(),
             audience: self.audience,
             subject: self.subject,
             command: self.command,
@@ -353,7 +362,52 @@ impl<D: Did> InvocationBuilder<D, D, D, D, Vec<String>, Vec<Cid>> {
         }
     }
 
-    // pub fn try_sign(self) -> Signed<Delegation> {
-    //     todo!()
-    // }
+    /// Builds the complete, signed [`Invocation`].
+    ///
+    /// # Errors
+    ///
+    /// * `SignerError` if signing the delegation fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if random number generator fails when generating a nonce.
+    /// This will never happen if a nonce is provided, and is not recoverable
+    /// becuase a broken RNG is a serious problem.
+    #[allow(clippy::expect_used)]
+    pub fn try_build(self) -> Result<super::Invocation<D>, SignerError<CodecError, D::SignError>> {
+        let payload: super::InvocationPayload<D::Did> = super::InvocationPayload {
+            issuer: self.issuer.did().clone(),
+            audience: self.audience,
+            subject: self.subject,
+            command: self.command,
+            arguments: self.arguments,
+            expiration: self.expiration,
+            issued_at: self.issued_at,
+            proofs: self.proofs,
+            cause: self.cause,
+            meta: self.meta,
+            nonce: self
+                .nonce
+                .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
+        };
+
+        let (sig, _) = self
+            .issuer
+            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)?;
+
+        let config: D = self.issuer;
+
+        let header: Varsig<D, DagCborCodec, super::InvocationPayload<D::Did>> =
+            Varsig::new(config, DagCborCodec);
+
+        let payload: EnvelopePayload<D, super::InvocationPayload<D::Did>> =
+            EnvelopePayload { header, payload };
+
+        let envelope: Envelope<D, super::InvocationPayload<D::Did>, <D as Verify>::Signature> =
+            Envelope(sig, payload);
+
+        let delegation: super::Invocation<D> = super::Invocation(envelope);
+
+        Ok(delegation)
+    }
 }

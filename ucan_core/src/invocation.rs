@@ -5,9 +5,11 @@
 
 pub mod builder;
 
-use self::builder::InvocationBuilder;
 use crate::{
-    crypto::nonce::Nonce, did::Did, envelope::Envelope, promise::Promised,
+    crypto::nonce::Nonce,
+    did::{Did, DidSigner},
+    envelope::Envelope,
+    promise::Promised,
     time::timestamp::Timestamp,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
@@ -20,25 +22,17 @@ use varsig::verify::Verify;
 /// This is the token that commands the receiver to perform some action.
 /// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
-pub struct Invocation<V: Verify, D: Did + Serialize + for<'de> Deserialize<'de>>(
-    Envelope<V, InvocationPayload<D>, <V as Verify>::Signature>,
+pub struct Invocation<D: DidSigner + Serialize + for<'de> Deserialize<'de>>(
+    Envelope<D, InvocationPayload<D::Did>, <D as Verify>::Signature>,
 );
 
-impl<V: Verify + Debug, D: Did + Serialize + for<'de> Deserialize<'de> + Debug> Debug
-    for Invocation<V, D>
-where
-    <V as Verify>::Signature: Debug,
-{
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de> + Debug> Debug for Invocation<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Invocation").field(&self.0).finish()
     }
 }
 
-impl<V: Verify + Serialize, D: Did + Serialize + for<'de> Deserialize<'de>> Serialize
-    for Invocation<V, D>
-where
-    <V as Verify>::Signature: Serialize,
-{
+impl<D: DidSigner + Serialize + for<'de> Deserialize<'de>> Serialize for Invocation<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -47,10 +41,9 @@ where
     }
 }
 
-impl<'de, V: Verify + Deserialize<'de>, I: Did + Serialize + for<'ze> Deserialize<'ze>>
-    Deserialize<'de> for Invocation<V, I>
+impl<'de, I: DidSigner + Serialize + for<'ze> Deserialize<'ze>> Deserialize<'de> for Invocation<I>
 where
-    <V as Verify>::Signature: for<'xe> Deserialize<'xe>,
+    <I as Verify>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -63,18 +56,32 @@ where
 /// Invoke a UCAN capability. This type implements the
 /// [UCAN Invocation spec](https://github.com/ucan-wg/invocation/README.md).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = "D: Did"))]
 pub struct InvocationPayload<D: Did> {
+    #[serde(rename = "iss")]
     pub(crate) issuer: D,
+
+    #[serde(rename = "aud")]
     pub(crate) audience: D,
 
+    #[serde(rename = "sub")]
     pub(crate) subject: D,
+
+    #[serde(rename = "cmd")]
     pub(crate) command: Vec<String>,
+
+    #[serde(rename = "arg")]
     pub(crate) arguments: BTreeMap<String, Promised>,
 
+    #[serde(rename = "prf")]
     pub(crate) proofs: Vec<Cid>,
+
     pub(crate) cause: Option<Cid>,
 
+    #[serde(rename = "iat")]
     pub(crate) issued_at: Option<Timestamp>,
+
+    #[serde(rename = "exp")]
     pub(crate) expiration: Option<Timestamp>,
 
     pub(crate) meta: BTreeMap<String, Ipld>,
@@ -82,12 +89,6 @@ pub struct InvocationPayload<D: Did> {
 }
 
 impl<D: Did> InvocationPayload<D> {
-    /// Creates a blank [`DelegationBuilder`] instance.
-    #[must_use]
-    pub const fn builder() -> InvocationBuilder<D> {
-        InvocationBuilder::new()
-    }
-
     /// Getter for the `issuer` field.
     pub const fn issuer(&self) -> &D {
         &self.issuer

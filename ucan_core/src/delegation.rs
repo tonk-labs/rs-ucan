@@ -18,15 +18,8 @@ use crate::{
 use builder::DelegationBuilder;
 use ipld_core::ipld::Ipld;
 use policy::predicate::Predicate;
-use serde::{
-    de::{self, Deserializer, MapAccess, Visitor},
-    Deserialize, Serialize,
-};
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Debug},
-    marker::PhantomData,
-};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, fmt::Debug};
 use varsig::verify::Verify;
 
 /// Top-level UCAN Delegation.
@@ -117,162 +110,32 @@ where
 ///
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
-#[derive(Debug, Clone, PartialEq, Serialize)] // FIXME serializer field names
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = "D: Did"))]
 pub struct DelegationPayload<D: Did> {
+    #[serde(rename = "iss")]
     pub(crate) issuer: D,
+
+    #[serde(rename = "aud")]
     pub(crate) audience: D,
 
+    #[serde(rename = "sub")]
     pub(crate) subject: DelegatedSubject<D>,
+
+    #[serde(rename = "cmd")]
     pub(crate) command: Vec<String>,
+
+    #[serde(rename = "pol")]
     pub(crate) policy: Vec<Predicate>,
 
+    #[serde(rename = "exp")]
     pub(crate) expiration: Option<Timestamp>,
+
+    #[serde(rename = "nbf")]
     pub(crate) not_before: Option<Timestamp>,
 
     pub(crate) meta: BTreeMap<String, Ipld>,
     pub(crate) nonce: Nonce,
-}
-
-#[allow(clippy::too_many_lines)]
-impl<'de, T: Did> Deserialize<'de> for DelegationPayload<T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Map field names to an enum for efficient matching
-        #[derive(Debug, Deserialize)]
-        #[serde(field_identifier, rename_all = "snake_case")]
-        enum Field {
-            Issuer,
-            Audience,
-            Subject,
-            Command,
-            Policy,
-            Expiration,
-            NotBefore,
-            Meta,
-            Nonce,
-            #[serde(other)]
-            Unknown,
-        }
-
-        struct DelegationPayloadVisitor<T>(PhantomData<T>);
-
-        impl<'de, T: Did> Visitor<'de> for DelegationPayloadVisitor<T> {
-            type Value = DelegationPayload<T>;
-
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(r#"a map containing "issuer", "audience", "subject", …"#)
-            }
-
-            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-            where
-                M: MapAccess<'de>,
-            {
-                // Option<> while parsing; we’ll validate at the end.
-                let mut issuer: Option<T> = None;
-                let mut audience: Option<T> = None;
-                let mut subject: Option<DelegatedSubject<T>> = None;
-                let mut command: Option<Vec<String>> = None;
-                let mut policy: Option<Vec<Predicate>> = None;
-                let mut expiration: Option<Option<Timestamp>> = None;
-                let mut not_before: Option<Option<Timestamp>> = None;
-                let mut meta: Option<BTreeMap<String, Ipld>> = None;
-                let mut nonce: Option<Nonce> = None;
-
-                while let Some(key) = map.next_key::<&str>()? {
-                    match key {
-                        "iss" => {
-                            if issuer.is_some() {
-                                return Err(de::Error::duplicate_field("issuer"));
-                            }
-                            issuer = Some(map.next_value()?);
-                        }
-                        "aud" => {
-                            if audience.is_some() {
-                                return Err(de::Error::duplicate_field("audience"));
-                            }
-                            audience = Some(map.next_value()?);
-                        }
-                        "sub" => {
-                            if subject.is_some() {
-                                return Err(de::Error::duplicate_field("subject"));
-                            }
-                            subject = Some(map.next_value()?);
-                        }
-                        "cmd" => {
-                            if command.is_some() {
-                                return Err(de::Error::duplicate_field("command"));
-                            }
-                            let txt: &str = map.next_value()?;
-                            let cmd: Vec<String> =
-                                txt.split('/').map(ToString::to_string).collect();
-                            command = Some(cmd);
-                        }
-                        "pol" => {
-                            if policy.is_some() {
-                                return Err(de::Error::duplicate_field("policy"));
-                            }
-                            policy = Some(map.next_value()?);
-                        }
-                        "exp" => {
-                            if expiration.is_some() {
-                                return Err(de::Error::duplicate_field("expiration"));
-                            }
-                            expiration = Some(map.next_value()?);
-                        }
-                        "nbf" => {
-                            if not_before.is_some() {
-                                return Err(de::Error::duplicate_field("not_before"));
-                            }
-                            not_before = Some(map.next_value()?);
-                        }
-                        "meta" => {
-                            if meta.is_some() {
-                                return Err(de::Error::duplicate_field("meta"));
-                            }
-                            meta = Some(map.next_value()?);
-                        }
-                        "nonce" => {
-                            if nonce.is_some() {
-                                return Err(de::Error::duplicate_field("nonce"));
-                            }
-                            let ipld: Ipld = map.next_value()?;
-                            if let Ipld::Bytes(nnc) = ipld {
-                                nonce = Some(Nonce::from(nnc));
-                            } else {
-                                return Err(de::Error::custom("nonce field is not a byte array"));
-                            }
-                        }
-                        _ => {
-                            // Skip unknowns for forward-compat
-                            let _: de::IgnoredAny = map.next_value()?;
-                        }
-                    }
-                }
-
-                // Required fields
-                let issuer = issuer.ok_or_else(|| de::Error::missing_field("issuer"))?;
-                let audience = audience.ok_or_else(|| de::Error::missing_field("audience"))?;
-                let subject = subject.ok_or_else(|| de::Error::missing_field("subject"))?;
-                let nonce = nonce.ok_or_else(|| de::Error::missing_field("nonce"))?;
-
-                Ok(DelegationPayload {
-                    issuer,
-                    audience,
-                    subject,
-                    command: command.unwrap_or_default(),
-                    policy: policy.unwrap_or_default(),
-                    expiration: expiration.unwrap_or(None),
-                    not_before: not_before.unwrap_or(None),
-                    meta: meta.unwrap_or_default(),
-                    nonce,
-                })
-            }
-        }
-
-        deserializer.deserialize_map(DelegationPayloadVisitor::<T>(PhantomData))
-    }
 }
 
 impl<D: Did> DelegationPayload<D> {
