@@ -35,11 +35,6 @@ pub trait Sign: Verify {
     }
 }
 
-impl Sign for Ed25519 {
-    type Signer = ed25519_dalek::SigningKey;
-    type SignError = signature::Error;
-}
-
 /// Asynchronous signing trait.
 pub trait AsyncSign: Verify {
     /// The asynchronous signing key.

@@ -37,6 +37,19 @@ pub trait DidSigner: Sign + Debug {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ed25519Did(pub ed25519_dalek::VerifyingKey, Ed25519);
 
+impl From<ed25519_dalek::VerifyingKey> for Ed25519Did {
+    fn from(key: ed25519_dalek::VerifyingKey) -> Self {
+        Ed25519Did(key, Ed25519::new())
+    }
+}
+
+impl From<ed25519_dalek::SigningKey> for Ed25519Did {
+    fn from(key: ed25519_dalek::SigningKey) -> Self {
+        let verifying_key = key.verifying_key();
+        Ed25519Did(verifying_key, Ed25519::new())
+    }
+}
+
 impl std::fmt::Display for Ed25519Did {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "did:key:FIXME")
@@ -145,5 +158,11 @@ impl Ed25519Signer {
     /// Get the associated signer.
     pub fn signer(&self) -> &ed25519_dalek::SigningKey {
         &self.signer
+    }
+}
+
+impl From<ed25519_dalek::SigningKey> for Ed25519Signer {
+    fn from(signer: ed25519_dalek::SigningKey) -> Self {
+        Self::new(signer)
     }
 }

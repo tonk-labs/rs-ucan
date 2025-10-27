@@ -187,6 +187,8 @@ impl<D: Did> DelegationPayload<D> {
 
 #[cfg(test)]
 mod tests {
+    use crate::did::{Ed25519Did, Ed25519Signer};
+
     use super::*;
     use testresult::TestResult;
 
@@ -195,7 +197,7 @@ mod tests {
 
     #[test]
     fn issuer_round_trip() -> TestResult {
-        let iss = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]);
+        let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
         let aud = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
         let sub = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
 

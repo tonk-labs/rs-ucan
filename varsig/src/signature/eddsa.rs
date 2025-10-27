@@ -3,6 +3,7 @@
 use crate::{
     curve::Edwards25519,
     hash::{Multihasher, Sha2_512},
+    signer::Sign,
     verify::Verify,
 };
 use std::marker::PhantomData;
@@ -51,4 +52,9 @@ impl Verify for Ed25519 {
             None
         }
     }
+}
+
+impl Sign for Ed25519 {
+    type Signer = ed25519_dalek::SigningKey;
+    type SignError = signature::Error;
 }

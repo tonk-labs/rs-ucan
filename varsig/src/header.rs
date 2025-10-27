@@ -229,66 +229,6 @@ impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
     }
 }
 
-// FIXME?
-// impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: serde::Deserializer<'de>,
-//     {
-//         let bytes = Vec::<u8>::deserialize(deserializer).map_err(|e| {
-//             serde::de::Error::custom(format!("unable to deserialize varsig header: {e}"))
-//         })?;
-//
-//         let len = bytes.len() as u64;
-//         let mut cursor = Cursor::new(bytes);
-//
-//         let varsig_tag = leb128::read::unsigned(&mut cursor).map_err(|e| {
-//             serde::de::Error::custom(format!("unable to read leb128 unsigned: {e}"))
-//         })?;
-//
-//         if varsig_tag != 0x34 {
-//             return Err(serde::de::Error::custom(format!(
-//                 "expected varsig tag 0x34, found {varsig_tag:#x}"
-//             )));
-//         }
-//
-//         let version_tag = leb128::read::unsigned(&mut cursor).map_err(|e| {
-//             serde::de::Error::custom(format!("unable to read leb128 unsigned: {e}"))
-//         })?;
-//
-//         if version_tag != 0x01 {
-//             return Err(serde::de::Error::custom(format!(
-//                 "expected varsig version tag 0x01, found {version_tag:#x}"
-//             )));
-//         }
-//
-//         let mut remaining = Vec::new();
-//
-//         while cursor.position() < len {
-//             match leb128::read::unsigned(&mut cursor) {
-//                 Ok(segment) => remaining.push(segment),
-//                 Err(e) => {
-//                     return Err(serde::de::Error::custom(format!(
-//                         "unable to read leb128 unsigned segment: {e}"
-//                     )));
-//                 }
-//             }
-//         }
-//
-//         let (verifier_cfg, more) = V::try_from_tags(remaining.as_slice())
-//             .ok_or_else(|| serde::de::Error::custom("unable to create verifier from tags"))?;
-//
-//         let codec = C::try_from_tags(more)
-//             .ok_or_else(|| serde::de::Error::custom("unable to create codec from tags"))?;
-//
-//         Ok(Varsig {
-//             verifier_cfg,
-//             codec,
-//             _data: PhantomData,
-//         })
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
