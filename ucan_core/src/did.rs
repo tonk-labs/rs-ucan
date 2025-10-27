@@ -1,5 +1,6 @@
 //! Decentralized Identifier (DID) helpers.
 
+use base58::ToBase58;
 use serde::{Deserialize, Serialize};
 use signature::Signer;
 use std::{fmt::Debug, str::FromStr};
@@ -23,7 +24,7 @@ pub trait Did:
 }
 
 /// A trait for DID signers.
-pub trait DidSigner: Did {
+pub trait DidSigner {
     /// The associated DID type.
     type Did: Did + Clone;
 
@@ -53,7 +54,12 @@ impl From<ed25519_dalek::SigningKey> for Ed25519Did {
 
 impl std::fmt::Display for Ed25519Did {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "did:key:FIXME")
+        let mut raw_bytes = Vec::with_capacity(34);
+        raw_bytes.push(0xed);
+        raw_bytes.push(0x01);
+        raw_bytes.extend_from_slice(self.0.as_bytes());
+        let b58 = ToBase58::to_base58(raw_bytes.as_slice());
+        write!(f, "did:key:z{}", b58)
     }
 }
 
@@ -165,5 +171,45 @@ impl Ed25519Signer {
 impl From<ed25519_dalek::SigningKey> for Ed25519Signer {
     fn from(signer: ed25519_dalek::SigningKey) -> Self {
         Self::new(signer)
+    }
+}
+
+impl std::fmt::Display for Ed25519Signer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.did)
+    }
+}
+
+impl DidSigner for Ed25519Signer {
+    type Did = Ed25519Did;
+
+    fn did(&self) -> &Self::Did {
+        &self.did
+    }
+
+    fn signer(&self) -> &<<Self::Did as Did>::VarsigConfig as Sign>::Signer {
+        &self.signer
+    }
+}
+
+impl Serialize for Ed25519Signer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.did.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ed25519Signer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // FIXME
+        let did = Ed25519Did::deserialize(deserializer)?;
+        Err(serde::de::Error::custom(format!(
+            "cannot deserialize Ed25519Signer from did: {did}"
+        )))
     }
 }

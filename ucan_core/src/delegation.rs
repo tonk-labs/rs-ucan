@@ -188,7 +188,7 @@ impl<D: Did> DelegationPayload<D> {
 
 #[cfg(test)]
 mod tests {
-    use crate::did::Ed25519Signer;
+    use crate::did::{Ed25519Did, Ed25519Signer};
 
     use super::*;
     use testresult::TestResult;
@@ -199,19 +199,30 @@ mod tests {
     #[test]
     fn issuer_round_trip() -> TestResult {
         let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-        let aud = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
-        let sub = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap();
+        let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
+            .unwrap()
+            .into();
+        let sub: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
+            .unwrap()
+            .into();
 
-        let delegation = DelegationBuilder::new()
-            .issuer(iss)
+        let builder: DelegationBuilder<
+            Ed25519Signer,
+            Ed25519Signer,
+            Ed25519Did,
+            DelegatedSubject<Ed25519Did>,
+            Vec<String>,
+        > = DelegationBuilder::new()
+            .issuer(iss.clone())
             .audience(aud)
             .subject(DelegatedSubject::Specific(sub))
-            .command(vec!["read".to_string(), "write".to_string()])
-            .try_build()?;
+            .command(vec!["read".to_string(), "write".to_string()]);
+
+        let delegation = builder.try_build()?;
 
         dbg!(&delegation.issuer().to_string());
 
-        assert_eq!(delegation.issuer().to_string(), "did:example:alice");
+        assert_eq!(delegation.issuer().to_string(), iss.to_string());
         Ok(())
     }
 }
