@@ -71,13 +71,15 @@ impl Nonce {
     /// # Example
     ///
     /// ```rust
-    /// # use ucan::crypto::Nonce;
-    /// # use ucan::did::Did;
-    /// #
+    /// # use ucan_core::crypto::nonce::Nonce;
+    /// # use ucan_core::did::Did;
+    /// # fn main() -> Result<(), getrandom::Error> {
     /// let mut salt = "did:example:123".as_bytes().to_vec();
-    /// let nonce = Nonce::generate_16();
+    /// let nonce = Nonce::generate_16()?;
     ///
     /// assert_eq!(Vec::from(nonce).len(), 16);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn generate_16() -> Result<Nonce, getrandom::Error> {
         let mut buf = [0; 16];
@@ -154,17 +156,17 @@ mod test {
 
     #[test]
     fn ipld_roundtrip_16() -> TestResult {
-        let gen = Nonce::generate_16()?;
-        let ipld = Ipld::from(gen.clone());
+        let nonce = Nonce::generate_16()?;
+        let ipld = Ipld::from(nonce.clone());
 
-        let inner = if let Nonce::Nonce16(nonce) = gen {
+        let inner = if let Nonce::Nonce16(nonce) = nonce {
             Ipld::Bytes(nonce.to_vec())
         } else {
             panic!("No conversion!")
         };
 
         assert_eq!(ipld, inner);
-        assert_eq!(gen, ipld.try_into().unwrap());
+        assert_eq!(nonce, ipld.try_into().unwrap());
 
         Ok(())
     }
