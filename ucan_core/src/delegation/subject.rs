@@ -41,7 +41,7 @@ impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             DelegatedSubject::Specific(did) => did.serialize(serializer),
-            DelegatedSubject::Any => serializer.serialize_str("*"),
+            DelegatedSubject::Any => serializer.serialize_none(),
         }
     }
 }
@@ -50,14 +50,12 @@ impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = serde_value::Value::deserialize(deserializer)?;
 
-        if let Ok(did) = I::deserialize(value.clone()) {
-            return Ok(DelegatedSubject::Specific(did));
+        if value == serde_value::Value::Unit {
+            return Ok(DelegatedSubject::Any);
         }
 
-        if let Ok(s) = String::deserialize(value) {
-            if s == "*" {
-                return Ok(DelegatedSubject::Any);
-            }
+        if let Ok(did) = I::deserialize(value) {
+            return Ok(DelegatedSubject::Specific(did));
         }
 
         Err(serde::de::Error::custom("invalid subject format"))
