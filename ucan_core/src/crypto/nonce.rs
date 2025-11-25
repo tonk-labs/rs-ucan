@@ -10,8 +10,26 @@ use thiserror::Error;
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::Arbitrary;
 
+/// Wrapper for serializing nonce as bytes
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+struct NonceBytes(serde_bytes::ByteBuf);
+
+impl From<Nonce> for NonceBytes {
+    fn from(nonce: Nonce) -> Self {
+        NonceBytes(serde_bytes::ByteBuf::from(Vec::from(nonce)))
+    }
+}
+
+impl From<NonceBytes> for Nonce {
+    fn from(bytes: NonceBytes) -> Self {
+        Nonce::from(bytes.0.into_vec())
+    }
+}
+
 /// Known [`Nonce`] types
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(into = "NonceBytes", from = "NonceBytes")]
 #[cfg_attr(any(test, feature = "test_utils"), derive(Arbitrary))]
 pub enum Nonce {
     /// 128-bit, 16-byte nonce
