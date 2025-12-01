@@ -2,12 +2,12 @@
 name = "varsig"
 description = "Varsig signature metadata"
 version = "0.1.0"
+authors = ["Brooklyn Zelenka <hello@brooklynzelenka.com>"]
 
 readme = "README.md"
 keywords = ["signature", "metadata", "ipld"]
 categories = ["cryptography"]
 
-authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

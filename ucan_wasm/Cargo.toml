@@ -1,12 +1,12 @@
 [package]
 name = "ucan_wasm"
 readme = "README.md"
+authors = ["Brooklyn Zelenka <hello@brooklynzelenka.com>"]
 keywords = ["auth", "capability", "rpc"]
 categories = ["security", "web-programming", "wasm"]
 description = "WebAssembly wrapper for ucan"
 version = "0.1.0"
 
-authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

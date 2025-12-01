@@ -7,12 +7,6 @@ members = [
 ]
 
 [workspace.package]
-authors = [
-    "Brooklyn Zelenka <hello@brooklynzelenka.com>",
-    "Irakli Gozalishvili <contact@gozala.io>",
-    "Christopher Joel <0xcda7a@gmail.com>"
-]
-
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/ucan-wg/rs-ucan"

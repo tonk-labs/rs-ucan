@@ -5,8 +5,12 @@ keywords = ["auth", "capability", "rpc"]
 categories = ["security", "web-programming"]
 description = "UCAN certificate capability tokens"
 version = "0.5.0"
+authors = [
+    "Brooklyn Zelenka <hello@brooklynzelenka.com>",
+    "Irakli Gozalishvili <contact@gozala.io>",
+    "Christopher Joel <0xcda7a@gmail.com>"
+]
 
-authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
