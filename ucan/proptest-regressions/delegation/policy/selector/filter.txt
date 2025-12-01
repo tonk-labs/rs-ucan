@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc fb5d701c63688dbe3f087ec340e3552a9d3d69a5ec7e4719c4b7aa51b44f1731 # shrinks to filter = Field("\u{6}")
+cc f6c11b79b931d7d82dfd194c455c4d7b4d1730d0995d3cb04c7d3ee185270062 # shrinks to filter = Try(Try(ArrayIndex(0)))
+cc 69416dd916dc558045c60533592a8ad289b4ddb496839aa3452c1fcb47e50307 # shrinks to filter = Try(ArrayIndex(0))
+cc d6c79f1880f55fd5d711386587f7c141f9e2f8f9808d9ca93cad3f46bba9dd38 # shrinks to filter = Field("ҧ")
+cc 5502255f2bc3a7d4618d25febb57c3cc16bd5351766af64bbe695d6a89d70d17 # shrinks to filter = Try(Try(Try(ArrayIndex(0))))

@@ -1,8 +1,6 @@
-use instant::SystemTime;
+//! Time utilities.
+//!
+//! The [`Timestamp`] struct is the main type for representing time in a UCAN token.
 
-pub fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
+pub mod error;
+pub mod timestamp;
