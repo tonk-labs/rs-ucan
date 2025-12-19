@@ -1,6 +1,6 @@
 //! Temporal errors.
 
-use std::time::SystemTime;
+use super::timestamp::SystemTime;
 use thiserror::Error;
 
 /// An error expressing when a time is larger than 2⁵³ seconds past the Unix epoch

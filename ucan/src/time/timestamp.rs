@@ -3,8 +3,13 @@
 use super::error::{NumberIsNotATimestamp, OutOfRangeError};
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+#[cfg(target_arch = "wasm32")]
+pub use web_time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(any(test, feature = "test_utils"))]
 use arbitrary::{self, Arbitrary, Unstructured};
@@ -109,23 +114,22 @@ impl Timestamp {
 }
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
 impl Timestamp {
     /// Lift a [`js_sys::Date`] into a Rust [`Timestamp`]
-    pub fn from_date(date_time: js_sys::Date) -> Result<Timestamp, JsError> {
+    pub fn from_date(date_time: js_sys::Date) -> Result<Timestamp, OutOfRangeError> {
         let millis = date_time.get_time() as u64;
-        let secs: u64 = (millis / 1000) as u64;
+        let secs: u64 = millis / 1000;
         let duration = Duration::new(secs, 0); // Just round off the nanos
-        Timestamp::new(UNIX_EPOCH + duration).map_err(Into::into)
+        Timestamp::new(UNIX_EPOCH + duration)
     }
 
     /// Lower the [`Timestamp`] to a [`js_sys::Date`]
     pub fn to_date(&self) -> js_sys::Date {
-        js_sys::Date::new(&JsValue::from(
-            self.time
+        js_sys::Date::new(&wasm_bindgen::JsValue::from(
+            self.0
                 .duration_since(UNIX_EPOCH)
                 .expect("time should be in range since it's getting a JS Date")
-                .as_millis(),
+                .as_millis() as f64,
         ))
     }
 }

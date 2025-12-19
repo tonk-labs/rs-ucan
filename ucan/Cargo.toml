@@ -39,6 +39,11 @@ thiserror.workspace = true
 tracing.workspace = true
 varsig = { path = "../varsig" }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+web-time = "1.1"
+
 [dev-dependencies]
 arbitrary = { workspace = true, optional = false }
 base64 = "0.22.1"
