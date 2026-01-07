@@ -4,7 +4,7 @@ use base58::ToBase58;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{fmt::Debug, str::FromStr};
 use thiserror::Error;
-use varsig::{signature::eddsa::Ed25519, signer::Sign};
+use varsig::{signature::eddsa::Ed25519, signer::Sign, verify::Verify};
 
 /// A trait for [DID]s.
 ///
@@ -20,6 +20,9 @@ pub trait Did:
 
     /// Get the associated `Varsig` configuration.
     fn varsig_config(&self) -> &Self::VarsigConfig;
+
+    /// Get the verifier (e.g. public key) for signature verification.
+    fn verifier(&self) -> <Self::VarsigConfig as Verify>::Verifier;
 }
 
 /// A trait for DID signers.
@@ -127,6 +130,10 @@ impl Did for Ed25519Did {
 
     fn varsig_config(&self) -> &Self::VarsigConfig {
         &self.1
+    }
+
+    fn verifier(&self) -> ed25519_dalek::VerifyingKey {
+        self.0
     }
 }
 

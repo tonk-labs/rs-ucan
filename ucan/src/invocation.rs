@@ -24,8 +24,10 @@ use crate::{
 use builder::InvocationBuilder;
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde::{Deserialize, Serialize};
+use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
+use varsig::codec::Codec;
 use varsig::verify::Verify;
 
 /// Top-level UCAN Invocation.
@@ -95,17 +97,57 @@ impl<D: Did> Invocation<D> {
         &self.0 .1.payload.nonce
     }
 
-    // FIXME delegation store trait
-    // pub fn check(&self, proof_store: BTreeMap<Cid, Verified<Delegation<D>>> -> Result<(), ()> {
-    //     self.try_verify(self.codec(), self.verifier(), self.signature(), self.payload())?;
+    /// Check if this invocation is valid.
+    ///
+    /// This method performs two checks:
+    /// 1. Verifies that the invocation's signature is valid
+    /// 2. Validates the proof chain using the provided delegation store
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`InvocationCheckError`] if signature verification fails
+    /// or if the proof chain validation fails.
+    pub async fn check<K: FutureKind, T: Borrow<Delegation<D>>, S: DelegationStore<K, D, T>>(
+        &self,
+        proof_store: &S,
+    ) -> Result<(), InvocationCheckError<K, D, T, S>> {
+        // 1. Verify signature
+        let signature = &self.0 .0;
+        let header = &self.0 .1.header;
+        let payload = &self.0 .1.payload;
+        let verifier = payload.issuer().verifier();
 
-    //     let mut realized_proofs = Vec::new();
-    //     for proof_cid in self.proofs() {
-    //         let found = proof_store.get(proof_cid).expect("FIXME");
-    //         realized_proofs.push(found);
-    //     }
-    //     todo!("FIXME")
-    // }
+        header
+            .try_verify(&verifier, payload, signature)
+            .map_err(InvocationCheckError::SignatureVerification)?;
+
+        // 2. Check proof chain
+        payload
+            .check(proof_store)
+            .await
+            .map_err(InvocationCheckError::StoredCheck)?;
+
+        Ok(())
+    }
+
+    /// Verify only the signature of this invocation, without checking proofs.
+    ///
+    /// This is useful when you want to verify the signature without
+    /// needing access to a delegation store.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SignatureVerificationError`] if signature verification fails.
+    pub fn verify_signature(&self) -> Result<(), SignatureVerificationError> {
+        let signature = &self.0 .0;
+        let header = &self.0 .1.header;
+        let payload = &self.0 .1.payload;
+        let verifier = payload.issuer().verifier();
+
+        header
+            .try_verify(&verifier, payload, signature)
+            .map_err(SignatureVerificationError)
+    }
 }
 
 impl<D: Did> Debug for Invocation<D> {
@@ -240,7 +282,7 @@ impl<D: Did> InvocationPayload<D> {
             .await
             .map_err(StoredCheckError::GetError)?;
         let dlgs: Vec<&Delegation<D>> = realized_proofs.iter().map(Borrow::borrow).collect();
-        self.syntatic_checks(dlgs)?;
+        self.syntactic_checks(dlgs)?;
         Ok(())
     }
 
@@ -249,7 +291,7 @@ impl<D: Did> InvocationPayload<D> {
     /// # Errors
     ///
     /// Returns a [`CheckFailed`] if the check fails.
-    pub fn syntatic_checks<'a, I: IntoIterator<Item = &'a Delegation<D>>>(
+    pub fn syntactic_checks<'a, I: IntoIterator<Item = &'a Delegation<D>>>(
         &'a self,
         proofs: I,
     ) -> Result<(), CheckFailed> {
@@ -263,7 +305,7 @@ impl<D: Did> InvocationPayload<D> {
         let mut expected_issuer = self.subject();
 
         for proof in proofs {
-            if proof.subject().allows(self.subject()) {
+            if !proof.subject().allows(self.subject()) {
                 return Err(CheckFailed::SubjectNotAllowedByProof);
             }
 
@@ -357,6 +399,32 @@ pub enum StoredCheckError<
     /// Proof check failed
     #[error(transparent)]
     CheckFailed(#[from] CheckFailed),
+}
+
+/// Error type for signature verification failures.
+#[derive(Debug, Error)]
+#[error("signature verification failed: {0}")]
+pub struct SignatureVerificationError(
+    pub varsig::verify::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+);
+
+/// Errors that can occur when checking an invocation (signature + proofs)
+#[derive(Debug, Error)]
+pub enum InvocationCheckError<
+    K: FutureKind,
+    D: Did,
+    T: Borrow<Delegation<D>>,
+    S: DelegationStore<K, D, T>,
+> {
+    /// Signature verification failed
+    #[error("signature verification failed: {0}")]
+    SignatureVerification(
+        varsig::verify::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+    ),
+
+    /// Proof chain check failed
+    #[error(transparent)]
+    StoredCheck(StoredCheckError<K, D, T, S>),
 }
 
 #[cfg(test)]
