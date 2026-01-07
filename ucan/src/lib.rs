@@ -24,4 +24,4 @@ mod ipld;
 mod sealed;
 
 pub use delegation::{builder::DelegationBuilder, Delegation};
-// pub use invocation::{builder::InvocationBuilder, Invocation};
+pub use invocation::{builder::InvocationBuilder, CheckFailed, Invocation, InvocationPayload};
