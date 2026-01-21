@@ -413,8 +413,18 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct EdKey(ed25519_dalek::VerifyingKey);
 
-    #[test]
-    fn issuer_round_trip() -> TestResult {
+    /// Create a deterministic test signer from a seed.
+    fn test_signer(seed: u8) -> Ed25519Signer {
+        ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
+    }
+
+    /// Create a deterministic test DID from a seed.
+    fn test_did(seed: u8) -> Ed25519Did {
+        test_signer(seed).did().clone()
+    }
+
+    #[tokio::test]
+    async fn issuer_round_trip() -> TestResult {
         let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
         let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
             .unwrap()
@@ -435,7 +445,7 @@ mod tests {
             .subject(DelegatedSubject::Specific(sub))
             .command(vec!["read".to_string(), "write".to_string()]);
 
-        let delegation = builder.try_build()?;
+        let delegation = builder.try_build(&iss).await?;
 
         assert_eq!(delegation.issuer().to_string(), iss.to_string());
         Ok(())
@@ -519,6 +529,217 @@ mod tests {
         } else {
             panic!("Expected a map");
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_has_correct_fields() -> TestResult {
+        let iss = test_signer(10);
+        let aud = test_did(20);
+        let sub = test_did(30);
+        let cmd = vec!["storage".to_string(), "read".to_string()];
+
+        let delegation = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Specific(sub.clone()))
+            .command(cmd.clone())
+            .try_build(&iss)
+            .await?;
+
+        assert_eq!(delegation.issuer(), &iss.did().clone());
+        assert_eq!(delegation.audience(), &aud);
+        assert_eq!(delegation.subject(), &DelegatedSubject::Specific(sub));
+        assert_eq!(delegation.command(), &Command::new(cmd));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_signature_verifies() -> TestResult {
+        let iss = test_signer(42);
+        let aud = test_did(43);
+        let sub = test_did(44);
+
+        let delegation = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud)
+            .subject(DelegatedSubject::Specific(sub))
+            .command(vec!["test".to_string()])
+            .try_build(&iss)
+            .await?;
+
+        // Access the envelope internals to verify the signature
+        let signature = &delegation.0 .0;
+        let header = &delegation.0 .1.header;
+        let payload = &delegation.0 .1.payload;
+        let verifier = iss.did().verifier();
+
+        // Verify the signature using the varsig header
+        header.try_verify(&verifier, payload, signature)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_serialization_roundtrip() -> TestResult {
+        let iss = test_signer(50);
+        let aud = test_did(51);
+        let sub = test_did(52);
+
+        let delegation = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Specific(sub.clone()))
+            .command(vec!["roundtrip".to_string()])
+            .try_build(&iss)
+            .await?;
+
+        // Serialize to CBOR
+        let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
+
+        // Deserialize back
+        let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+
+        // Verify all fields match
+        assert_eq!(roundtripped.issuer(), delegation.issuer());
+        assert_eq!(roundtripped.audience(), delegation.audience());
+        assert_eq!(roundtripped.subject(), delegation.subject());
+        assert_eq!(roundtripped.command(), delegation.command());
+        assert_eq!(roundtripped.nonce(), delegation.nonce());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_with_any_subject() -> TestResult {
+        let iss = test_signer(60);
+        let aud = test_did(61);
+
+        let delegation = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud)
+            .subject(DelegatedSubject::Any)
+            .command(vec!["any".to_string()])
+            .try_build(&iss)
+            .await?;
+
+        assert_eq!(delegation.subject(), &DelegatedSubject::Any);
+
+        // Verify signature still works with Any subject
+        let signature = &delegation.0 .0;
+        let header = &delegation.0 .1.header;
+        let payload = &delegation.0 .1.payload;
+        let verifier = iss.did().verifier();
+
+        header.try_verify(&verifier, payload, signature)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
+        use crate::crypto::nonce::Nonce;
+
+        let iss = test_signer(70);
+        let aud = test_did(71);
+        let sub = test_did(72);
+        let nonce = Nonce::generate_16()?;
+
+        // Build two delegations with the same nonce
+        let delegation1 = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Specific(sub.clone()))
+            .command(vec!["compare".to_string()])
+            .nonce(nonce.clone())
+            .try_build(&iss)
+            .await?;
+
+        let delegation2 = DelegationBuilder::new()
+            .issuer(iss.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Specific(sub.clone()))
+            .command(vec!["compare".to_string()])
+            .nonce(nonce)
+            .try_build(&iss)
+            .await?;
+
+        // Both should have the same payload content
+        assert_eq!(delegation1.issuer(), delegation2.issuer());
+        assert_eq!(delegation1.audience(), delegation2.audience());
+        assert_eq!(delegation1.subject(), delegation2.subject());
+        assert_eq!(delegation1.command(), delegation2.command());
+        assert_eq!(delegation1.nonce(), delegation2.nonce());
+
+        // Both signatures should verify
+        let verifier = iss.did().verifier();
+
+        let sig1 = &delegation1.0 .0;
+        let header1 = &delegation1.0 .1.header;
+        let payload1 = &delegation1.0 .1.payload;
+        header1.try_verify(&verifier, payload1, sig1)?;
+
+        let sig2 = &delegation2.0 .0;
+        let header2 = &delegation2.0 .1.header;
+        let payload2 = &delegation2.0 .1.payload;
+        header2.try_verify(&verifier, payload2, sig2)?;
+
+        // With the same nonce, the signatures should be identical
+        // because Ed25519 is deterministic
+        assert_eq!(sig1, sig2, "Signatures should be identical with same nonce");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delegation_different_signers_different_signatures() -> TestResult {
+        use crate::crypto::nonce::Nonce;
+
+        let iss1 = test_signer(80);
+        let iss2 = test_signer(81);
+        let aud = test_did(82);
+        let nonce = Nonce::generate_16()?;
+
+        let delegation1 = DelegationBuilder::new()
+            .issuer(iss1.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Any)
+            .command(vec!["test".to_string()])
+            .nonce(nonce.clone())
+            .try_build(&iss1)
+            .await?;
+
+        let delegation2 = DelegationBuilder::new()
+            .issuer(iss2.clone())
+            .audience(aud.clone())
+            .subject(DelegatedSubject::Any)
+            .command(vec!["test".to_string()])
+            .nonce(nonce)
+            .try_build(&iss2)
+            .await?;
+
+        // Different issuers should produce different signatures
+        assert_ne!(
+            delegation1.0 .0, delegation2.0 .0,
+            "Different signers should produce different signatures"
+        );
+
+        // But both should verify with their respective keys
+        let verifier1 = iss1.did().verifier();
+        delegation1.0 .1.header.try_verify(
+            &verifier1,
+            &delegation1.0 .1.payload,
+            &delegation1.0 .0,
+        )?;
+
+        let verifier2 = iss2.did().verifier();
+        delegation2.0 .1.header.try_verify(
+            &verifier2,
+            &delegation2.0 .1.payload,
+            &delegation2.0 .0,
+        )?;
 
         Ok(())
     }

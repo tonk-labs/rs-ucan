@@ -40,8 +40,16 @@ tracing.workspace = true
 varsig = { path = "../varsig" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2.9", features = ["js"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Crypto",
+    "SubtleCrypto",
+    "CryptoKey",
+    "CryptoKeyPair",
+] }
 web-time = "1.1"
 
 [dev-dependencies]
@@ -54,6 +62,10 @@ serde_json = "1.0"
 serde_ipld_dagjson.workspace = true
 test-log.workspace = true
 testresult.workspace = true
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [features]
 test_utils = ["arb", "property_test"]

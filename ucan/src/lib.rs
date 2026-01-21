@@ -3,6 +3,7 @@
 #![allow(clippy::multiple_crate_versions)] // syn
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod builder;
 pub mod cid;
 pub mod collection;
 pub mod command;
@@ -23,5 +24,10 @@ pub mod unset;
 mod ipld;
 mod sealed;
 
+pub use builder::AsyncBuildError;
 pub use delegation::{builder::DelegationBuilder, Delegation};
+pub use did::AsyncDidSigner;
 pub use invocation::{builder::InvocationBuilder, CheckFailed, Invocation, InvocationPayload};
+
+#[cfg(target_arch = "wasm32")]
+pub use crypto::web_crypto::WebCryptoEd25519Signer;

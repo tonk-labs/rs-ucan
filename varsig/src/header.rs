@@ -2,7 +2,7 @@
 
 use crate::{
     codec::Codec,
-    signer::{AsyncSign, Sign, SignerError},
+    signer::{Sign, SignerError},
     verify::Verify,
 };
 use serde::{Deserialize, Serialize};
@@ -64,26 +64,6 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         T: Serialize,
     {
         self.verifier_cfg.try_sign(&self.codec, sk, payload)
-    }
-
-    /// Try to asynchronously sign a payload with the provided signing key.
-    ///
-    /// # Errors
-    ///
-    /// If encoding or signing fails, a `SignerError` is returned.
-    pub async fn try_sign_async(
-        &self,
-        sk: &V::AsyncSigner,
-        payload: &T,
-    ) -> Result<(V::Signature, Vec<u8>), SignerError<C::EncodingError, V::AsyncSignError>>
-    where
-        V: AsyncSign,
-        C: Codec<T>,
-        T: Serialize,
-    {
-        self.verifier_cfg
-            .try_sign_async(&self.codec, sk, payload)
-            .await
     }
 
     /// Try to verify a signature for some payload.

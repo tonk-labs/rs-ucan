@@ -2,7 +2,8 @@
 
 use base58::ToBase58;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{fmt::Debug, str::FromStr};
+use signature::SignatureEncoding;
+use std::{error::Error, fmt::Debug, future::Future, str::FromStr};
 use thiserror::Error;
 use varsig::{signature::eddsa::Ed25519, signer::Sign, verify::Verify};
 
@@ -35,6 +36,46 @@ pub trait DidSigner {
 
     /// Get the associated signer instance.
     fn signer(&self) -> &<<Self::Did as Did>::VarsigConfig as Sign>::Signer;
+}
+
+/// A trait for DID signers that support asynchronous signing.
+///
+/// Unlike [`DidSigner`], this trait doesn't require returning a reference
+/// to the signer, making it compatible with WebCrypto non-extractable keys
+/// and other external signing mechanisms.
+///
+/// # Example
+///
+/// ```ignore
+/// // With a WebCrypto signer (non-extractable key)
+/// let signer = WebCryptoEd25519Signer::generate().await?;
+/// let delegation = DelegationBuilder::new()
+///     .issuer_did(signer.did().clone())
+///     .audience(audience_did)
+///     .subject(DelegatedSubject::Any)
+///     .command(vec!["storage".into(), "read".into()])
+///     .try_build(&signer)
+///     .await?;
+/// ```
+pub trait AsyncDidSigner {
+    /// The associated DID type.
+    type Did: Did + Clone;
+
+    /// The signature type produced by this signer.
+    type Signature: SignatureEncoding;
+
+    /// The error type for signing operations.
+    type SignError: Error + 'static;
+
+    /// Get the associated DID.
+    fn did(&self) -> &Self::Did;
+
+    /// Sign a message asynchronously.
+    ///
+    /// This method is designed to work with external signing mechanisms
+    /// like WebCrypto where the key material is not directly accessible,
+    /// but also works with synchronous signers like `ed25519_dalek`.
+    fn sign(&self, msg: &[u8]) -> impl Future<Output = Result<Self::Signature, Self::SignError>>;
 }
 
 /// An `Ed25519` `did:key`.
@@ -275,11 +316,158 @@ impl DidSigner for Ed25519Signer {
     }
 }
 
+impl AsyncDidSigner for Ed25519Signer {
+    type Did = Ed25519Did;
+    type Signature = ed25519_dalek::Signature;
+    type SignError = signature::Error;
+
+    fn did(&self) -> &Self::Did {
+        &self.did
+    }
+
+    async fn sign(&self, msg: &[u8]) -> Result<Self::Signature, Self::SignError> {
+        use signature::Signer;
+        self.signer.try_sign(msg)
+    }
+}
+
 impl Serialize for Ed25519Signer {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         self.did.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use signature::{Signer, Verifier};
+    use testresult::TestResult;
+
+    /// Create a deterministic test signer from a seed.
+    fn test_signer(seed: u8) -> Ed25519Signer {
+        ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
+    }
+
+    #[test]
+    fn ed25519_did_round_trip() -> TestResult {
+        let signer = test_signer(0);
+        let did_string = signer.did().to_string();
+
+        // Parse the DID string back
+        let parsed: Ed25519Did = did_string.parse()?;
+
+        assert_eq!(parsed, *signer.did());
+        Ok(())
+    }
+
+    #[test]
+    fn ed25519_signer_sync_sign_verifies() -> TestResult {
+        let signer = test_signer(42);
+        let msg = b"test message for signing";
+
+        // Sign using the sync Signer trait
+        let signature = signer.signer().try_sign(msg)?;
+
+        // Verify using the verifying key from the DID
+        let verifier = signer.did().verifier();
+        verifier.verify(msg, &signature)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ed25519_async_signer_produces_valid_signature() -> TestResult {
+        let signer = test_signer(42);
+        let msg = b"test message for async signing";
+
+        // Sign using AsyncDidSigner
+        let signature = AsyncDidSigner::sign(&signer, msg).await?;
+
+        // Verify using the verifying key from the DID
+        let verifier = signer.did().verifier();
+        verifier.verify(msg, &signature)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ed25519_async_signer_matches_sync_signer() -> TestResult {
+        let signer = test_signer(123);
+        let msg = b"identical message for both signers";
+
+        // Sign using sync Signer trait
+        let sync_signature = signer.signer().try_sign(msg)?;
+
+        // Sign using AsyncDidSigner
+        let async_signature = AsyncDidSigner::sign(&signer, msg).await?;
+
+        // Ed25519 is deterministic, so signatures should be identical
+        assert_eq!(
+            sync_signature, async_signature,
+            "Sync and async signatures should be identical for the same message"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ed25519_async_signer_different_messages_different_signatures() -> TestResult {
+        let signer = test_signer(7);
+        let msg1 = b"first message";
+        let msg2 = b"second message";
+
+        let sig1 = AsyncDidSigner::sign(&signer, msg1).await?;
+        let sig2 = AsyncDidSigner::sign(&signer, msg2).await?;
+
+        assert_ne!(
+            sig1, sig2,
+            "Different messages should produce different signatures"
+        );
+
+        // Both should still verify against their respective messages
+        let verifier = signer.did().verifier();
+        verifier.verify(msg1, &sig1)?;
+        verifier.verify(msg2, &sig2)?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ed25519_async_signer_wrong_message_fails_verification() -> TestResult {
+        let signer = test_signer(99);
+        let msg = b"original message";
+        let wrong_msg = b"tampered message";
+
+        let signature = AsyncDidSigner::sign(&signer, msg).await?;
+
+        // Verification with wrong message should fail
+        let verifier = signer.did().verifier();
+        let result = verifier.verify(wrong_msg, &signature);
+
+        assert!(
+            result.is_err(),
+            "Verification should fail for wrong message"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ed25519_async_signer_did_matches() -> TestResult {
+        let signer = test_signer(55);
+
+        // The DID from DidSigner trait should match AsyncDidSigner trait
+        let did_from_did_signer: &Ed25519Did = DidSigner::did(&signer);
+        let did_from_async_signer: &Ed25519Did = AsyncDidSigner::did(&signer);
+
+        assert_eq!(
+            did_from_did_signer, did_from_async_signer,
+            "DID should be the same from both trait implementations"
+        );
+
+        Ok(())
     }
 }

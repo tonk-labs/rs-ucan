@@ -1,9 +1,10 @@
 //! Typesafe builder for [`InvocationPayload`].
 
 use crate::{
+    builder::AsyncBuildError,
     command::Command,
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
+    did::{AsyncDidSigner, Did, DidSigner},
     envelope::{Envelope, EnvelopePayload},
     promise::Promised,
     sealed::{CommandOrUnset, DidOrUnset, DidSignerOrUnset, ProofsOrUnset},
@@ -11,14 +12,10 @@ use crate::{
     unset::Unset,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
-use serde::Serialize;
-use serde_ipld_dagcbor::{codec::DagCborCodec, error::CodecError};
+use serde_ipld_dagcbor::codec::DagCborCodec;
+use signature::SignatureEncoding;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{
-    signer::{Sign, SignerError},
-    verify::Verify,
-    Varsig,
-};
+use varsig::{verify::Verify, Varsig};
 
 /// Typesafe builder for [`Delegation`].
 #[allow(private_bounds)]
@@ -335,55 +332,59 @@ impl<
     }
 }
 
+/// Building methods that use async signing.
+///
+/// This impl block uses async signing via [`AsyncDidSigner`], which works with
+/// both native `ed25519_dalek` signers and WebCrypto signers in WASM environments.
+/// It doesn't require the issuer type to implement `Serialize`, making it compatible
+/// with `WebCryptoEd25519Signer` (since `CryptoKey` is not serializable).
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: DidSigner + Serialize> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
-    /// Builds the [`Delegation`] instance from the builder.
-    ///
-    /// This is typesafe, and only possible to call when all required fields are set.
-    ///
-    /// # Panics
-    ///
-    /// Panics if random number generator fails when generating a nonce.
-    /// This will never happen if a nonce is provided, and is not recoverable
-    /// becuase a broken RNG is a serious problem.
-    #[allow(clippy::expect_used)]
-    pub fn build(self) -> super::InvocationPayload<D::Did> {
-        super::InvocationPayload {
-            issuer: self.issuer.did().clone(),
-            audience: self.audience,
-            subject: self.subject,
-            command: self.command,
-            arguments: self.arguments,
-            proofs: self.proofs,
-            cause: self.cause,
-            expiration: self.expiration,
-            issued_at: self.issued_at,
-            meta: self.meta,
-            nonce: self
-                .nonce
-                .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
-        }
-    }
-
+impl<D: DidSigner> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
     /// Builds the complete, signed [`Invocation`].
+    ///
+    /// This method works with any signer implementing [`AsyncDidSigner`], including
+    /// native `ed25519_dalek` signers and WebCrypto signers in WASM environments.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `S` - A signer that implements [`AsyncDidSigner`] with a matching DID type
     ///
     /// # Errors
     ///
-    /// * `SignerError` if signing the delegation fails.
+    /// * `AsyncBuildError::EncodingError` if encoding the payload fails
+    /// * `AsyncBuildError::SigningError` if signing fails
     ///
     /// # Panics
     ///
     /// Panics if random number generator fails when generating a nonce.
     /// This will never happen if a nonce is provided, and is not recoverable
-    /// becuase a broken RNG is a serious problem.
+    /// because a broken RNG is a serious problem.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let signer = Ed25519Signer::new(signing_key);
+    /// let invocation = InvocationBuilder::new()
+    ///     .issuer(signer.clone())
+    ///     .audience(audience_did)
+    ///     .subject(subject_did)
+    ///     .command(vec!["storage".into(), "read".into()])
+    ///     .proofs(vec![delegation_cid])
+    ///     .try_build(&signer)
+    ///     .await?;
+    /// ```
     #[allow(clippy::expect_used)]
-    #[allow(clippy::type_complexity)]
-    pub fn try_build(
+    pub async fn try_build<S>(
         self,
-    ) -> Result<
-        super::Invocation<D::Did>,
-        SignerError<CodecError, <<D::Did as Did>::VarsigConfig as Sign>::SignError>,
-    > {
+        signer: &S,
+    ) -> Result<super::Invocation<D::Did>, AsyncBuildError<S::SignError>>
+    where
+        S: AsyncDidSigner<
+            Did = D::Did,
+            Signature = <<D::Did as Did>::VarsigConfig as Verify>::Signature,
+        >,
+        S::Signature: SignatureEncoding,
+    {
         let payload: super::InvocationPayload<D::Did> = super::InvocationPayload {
             issuer: self.issuer.did().clone(),
             audience: self.audience,
@@ -400,11 +401,15 @@ impl<D: DidSigner + Serialize> InvocationBuilder<D, D, D::Did, D::Did, Command, 
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        let (sig, _) = self.issuer.did().varsig_config().try_sign(
-            &DagCborCodec,
-            self.issuer.signer(),
-            &payload,
-        )?;
+        // Encode the payload
+        let encoded = serde_ipld_dagcbor::to_vec(&payload)
+            .map_err(|e| AsyncBuildError::EncodingError(e.to_string()))?;
+
+        // Sign the encoded payload
+        let sig = signer
+            .sign(&encoded)
+            .await
+            .map_err(AsyncBuildError::SigningError)?;
 
         let header: Varsig<
             <D::Did as Did>::VarsigConfig,
@@ -421,7 +426,7 @@ impl<D: DidSigner + Serialize> InvocationBuilder<D, D, D::Did, D::Did, Command, 
         let envelope: Envelope<
             <D::Did as Did>::VarsigConfig,
             super::InvocationPayload<D::Did>,
-            <<D::Did as Did>::VarsigConfig as Verify>::Signature,
+            S::Signature,
         > = Envelope(sig, payload);
 
         let invocation: super::Invocation<D::Did> = super::Invocation(envelope);
