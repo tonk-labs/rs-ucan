@@ -1,12 +1,12 @@
 //! ECDSA signature algorithms.
 
+#[cfg(feature = "secp521r1")]
+use crate::curve::Secp521r1;
 use crate::{
     curve::{Secp256k1, Secp256r1},
     hash::Multihasher,
     verify::Verify,
 };
-#[cfg(feature = "secp521r1")]
-use crate::curve::Secp521r1;
 use std::marker::PhantomData;
 
 /// The ECDSA signature algorithm.
