@@ -2,16 +2,22 @@
 
 #[cfg(feature = "web_crypto")]
 use crate::signature::ecdsa;
+#[cfg(feature = "web_crypto")]
+use crate::signature::eddsa;
+#[cfg(feature = "web_crypto")]
+use crate::signature::rsa;
+#[cfg(feature = "web_crypto")]
+use crate::verify::Verify;
 
 /// The WebCrypto-compatible signature types.
 #[cfg(feature = "web_crypto")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WebCrypto {
-    /// 2048-bit RSA signature type
-    Rs256_2048(rsa::Rs256<2048>),
+    /// 2048-bit RSA signature type (256 bytes)
+    Rs256_2048(rsa::Rs256<256>),
 
-    /// 4096-bit RSA signature type
-    Rs256_4096(rsa::Rs256<4096>),
+    /// 4096-bit RSA signature type (512 bytes)
+    Rs256_4096(rsa::Rs256<512>),
 
     /// ES256 signature type
     Es256(ecdsa::Es256),
@@ -29,11 +35,11 @@ pub enum WebCrypto {
 #[cfg(feature = "web_crypto")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WebCryptoVerifier {
-    /// Verifier for 2048-bit RSA signature type
-    Rs256_2048(rsa::Rs256<2048>),
+    /// Verifier for 2048-bit RSA signature type (256 bytes)
+    Rs256_2048(rsa::Rs256<256>),
 
-    /// Verifier for 4096-bit RSA signature type
-    Rs256_4096(rsa::Rs256<4096>),
+    /// Verifier for 4096-bit RSA signature type (512 bytes)
+    Rs256_4096(rsa::Rs256<512>),
 
     /// Verifier for ES256 signature type
     Es256(ecdsa::Es256),
@@ -56,7 +62,7 @@ impl Verify for WebCrypto {
     fn prefix(&self) -> u64 {
         match self {
             WebCrypto::Rs256_2048(rs256) => rs256.prefix(),
-            WebCrypto::Rs256_4096(rs512) => r512.prefix(),
+            WebCrypto::Rs256_4096(rs512) => rs512.prefix(),
             WebCrypto::Es256(es256) => es256.prefix(),
             WebCrypto::Es384(es384) => es384.prefix(),
             WebCrypto::Es512(es512) => es512.prefix(),
@@ -87,11 +93,11 @@ impl Verify for WebCrypto {
                 }
                 match bytes[1..=2] {
                     [0x12, 0x0100] => Some((
-                        WebCrypto::Rs256_2048(rsa::Rs256::<2048>::default()),
+                        WebCrypto::Rs256_2048(rsa::Rs256::<256>::default()),
                         &bytes[3..],
                     )),
                     [0x12, 0x0200] => Some((
-                        WebCrypto::Rs256_4096(rsa::Rs256::<4096>::default()),
+                        WebCrypto::Rs256_4096(rsa::Rs256::<512>::default()),
                         &bytes[3..],
                     )),
                     _ => None,

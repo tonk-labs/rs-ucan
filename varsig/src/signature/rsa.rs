@@ -1,5 +1,12 @@
 //! RSA signature algorithm configuration.
 
+#[cfg(feature = "rsa")]
+use crate::hash::{Multihasher, Sha2_256};
+#[cfg(feature = "rsa")]
+use crate::verify::Verify;
+#[cfg(feature = "rsa")]
+use std::marker::PhantomData;
+
 /// The RSA signature algorithm.
 ///
 /// The `const L` type parameter represents the key length in bytes.

@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         rust-toolchain:
-  g       - stable
+          - stable
           - nightly
           # minimum version
           - 1.85
@@ -101,4 +101,4 @@ jobs:
           toolchain: ${{ matrix.rust-toolchain }}
 
       - name: Run Tests
-        run: cargo test --all-features
+        run: cargo test

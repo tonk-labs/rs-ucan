@@ -5,6 +5,8 @@ use crate::{
     hash::Multihasher,
     verify::Verify,
 };
+#[cfg(feature = "secp521r1")]
+use crate::curve::Secp521r1;
 use std::marker::PhantomData;
 
 /// The ECDSA signature algorithm.
@@ -19,6 +21,9 @@ impl EcDsaCurve for Secp256k1 {}
 
 #[cfg(feature = "secp256r1")]
 impl EcDsaCurve for Secp256r1 {}
+
+#[cfg(feature = "secp521r1")]
+impl EcDsaCurve for Secp521r1 {}
 
 /// The ES256 signature algorithm.
 #[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
