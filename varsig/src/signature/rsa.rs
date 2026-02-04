@@ -34,8 +34,8 @@ impl Verify for Rs256<256> {
     }
 
     fn try_from_tags(bytes: &[u64]) -> Option<(Self, &[u64])> {
-        if bytes[0..=2] == [0x1205, 0x12, 0x0100] {
-            Some((Rsa(PhantomData), &bytes[3..]))
+        if bytes.get(0..=2)? == [0x1205, 0x12, 0x0100] {
+            Some((Rsa(PhantomData), bytes.get(3..)?))
         } else {
             None
         }
@@ -56,8 +56,8 @@ impl Verify for Rs256<512> {
     }
 
     fn try_from_tags(bytes: &[u64]) -> Option<(Self, &[u64])> {
-        if bytes[0..=2] == [0x1205, 0x12, 0x0200] {
-            Some((Rsa(PhantomData), &bytes[3..]))
+        if bytes.get(0..=2)? == [0x1205, 0x12, 0x0200] {
+            Some((Rsa(PhantomData), bytes.get(3..)?))
         } else {
             None
         }

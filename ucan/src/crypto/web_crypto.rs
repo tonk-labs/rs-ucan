@@ -399,9 +399,11 @@ fn create_ed25519_pkcs8(seed: &[u8; 32]) -> Vec<u8> {
 #[cfg(target_arch = "wasm32")]
 mod tests {
     use super::*;
-    use crate::delegation::{builder::DelegationBuilder, subject::DelegatedSubject};
-    use crate::did::Ed25519Did;
-    use crate::invocation::builder::InvocationBuilder;
+    use crate::{
+        delegation::{builder::DelegationBuilder, subject::DelegatedSubject},
+        did::Ed25519Did,
+        invocation::builder::InvocationBuilder,
+    };
     use signature::Verifier;
     use wasm_bindgen_test::*;
 
