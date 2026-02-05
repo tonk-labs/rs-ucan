@@ -28,7 +28,7 @@ pub use delegation::{
     builder::{BuildError as DelegationBuildError, DelegationBuilder},
     Delegation,
 };
-pub use did::{Ed25519Did, Ed25519Signer};
+pub use did::{Ed25519Did, Ed25519Signer, KeyExport};
 pub use invocation::{
     builder::{BuildError as InvocationBuildError, InvocationBuilder},
     CheckFailed, Invocation, InvocationPayload,

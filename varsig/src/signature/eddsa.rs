@@ -6,6 +6,9 @@ use crate::{
     signer::Sign,
     verify::Verify,
 };
+
+#[cfg(feature = "edwards25519")]
+use crate::signer::KeyExport;
 use signature::SignatureEncoding;
 use std::marker::PhantomData;
 
@@ -202,6 +205,44 @@ pub enum Ed25519SigningKey {
     WebCrypto(web::SigningKey),
 }
 
+/// Errors from [`Ed25519SigningKey::import`] or [`Ed25519SigningKey::export`].
+#[cfg(feature = "edwards25519")]
+#[derive(Debug, Clone)]
+#[allow(missing_copy_implementations)]
+pub enum Ed25519KeyError {
+    /// The seed bytes have the wrong length (expected 32).
+    InvalidSeedLength(usize),
+
+    /// WebCrypto operation failed (WASM only).
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    WebCrypto(web::WebCryptoError),
+}
+
+#[cfg(feature = "edwards25519")]
+impl std::fmt::Display for Ed25519KeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSeedLength(n) => write!(f, "expected 32 seed bytes, got {n}"),
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            Self::WebCrypto(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+#[cfg(feature = "edwards25519")]
+impl std::error::Error for Ed25519KeyError {}
+
+#[cfg(all(
+    feature = "edwards25519",
+    target_arch = "wasm32",
+    target_os = "unknown"
+))]
+impl From<web::WebCryptoError> for Ed25519KeyError {
+    fn from(e: web::WebCryptoError) -> Self {
+        Self::WebCrypto(e)
+    }
+}
+
 #[cfg(feature = "edwards25519")]
 impl Ed25519SigningKey {
     /// Get the verifying (public) key.
@@ -211,6 +252,51 @@ impl Ed25519SigningKey {
             Self::Native(key) => Ed25519VerifyingKey::Native(key.verifying_key()),
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             Self::WebCrypto(key) => Ed25519VerifyingKey::WebCrypto(key.verifying_key()),
+        }
+    }
+
+    /// Export the key material.
+    ///
+    /// For `Native` keys, returns `KeyExport::Extractable` with the raw seed bytes.
+    /// For `WebCrypto` keys, delegates to [`web::SigningKey::export`].
+    ///
+    /// # Errors
+    ///
+    /// On WASM with a non-extractable `WebCrypto` key, returns
+    /// `KeyExport::NonExtractable` (not an error). Errors only if the
+    /// `WebCrypto` export operation itself fails.
+    #[allow(clippy::unused_async)]
+    pub async fn export(&self) -> Result<KeyExport, Ed25519KeyError> {
+        match self {
+            Self::Native(key) => Ok(KeyExport::Extractable(key.to_bytes().to_vec())),
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            Self::WebCrypto(key) => Ok(key.export().await?),
+        }
+    }
+
+    /// Import from a [`KeyExport`].
+    ///
+    /// - `Extractable(bytes)` — constructs a native `ed25519_dalek::SigningKey`.
+    /// - `NonExtractable { .. }` (WASM only) — delegates to [`web::SigningKey::import`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the seed has the wrong length or the `WebCrypto` import fails.
+    #[allow(clippy::unused_async)]
+    pub async fn import(key: impl Into<KeyExport>) -> Result<Self, Ed25519KeyError> {
+        let key = key.into();
+        match key {
+            KeyExport::Extractable(ref bytes) => {
+                let seed: [u8; 32] = bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| Ed25519KeyError::InvalidSeedLength(bytes.len()))?;
+                Ok(Self::Native(ed25519_dalek::SigningKey::from_bytes(&seed)))
+            }
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            KeyExport::NonExtractable { .. } => {
+                Ok(Self::WebCrypto(web::SigningKey::import(key).await?))
+            }
         }
     }
 }
