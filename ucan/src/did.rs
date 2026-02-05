@@ -7,6 +7,7 @@ use std::{fmt::Debug, str::FromStr};
 use varsig::{signer::Sign, verify::Verify};
 
 pub use ed25519::{Ed25519Did, Ed25519DidFromStrError, Ed25519Signer};
+pub use varsig::signer::KeyExport;
 
 /// A trait for [DID]s.
 ///
