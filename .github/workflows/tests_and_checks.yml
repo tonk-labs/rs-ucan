@@ -130,4 +130,6 @@ jobs:
       - name: Run WASM Tests
         env:
           WASM_BINDGEN_TEST_TIMEOUT: 60
-        run: cargo test --target wasm32-unknown-unknown --all-features
+        # Note: --all-features is omitted because proptest's wait-timeout dep
+        # doesn't compile for wasm32-unknown-unknown.
+        run: cargo test --target wasm32-unknown-unknown
