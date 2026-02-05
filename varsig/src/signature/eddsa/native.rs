@@ -7,3 +7,8 @@
 ///
 /// This is a type alias to `ed25519_dalek::SigningKey`.
 pub type SigningKey = ed25519_dalek::SigningKey;
+
+/// Native Ed25519 verifying key.
+///
+/// This is a type alias to `ed25519_dalek::VerifyingKey`.
+pub type VerifyingKey = ed25519_dalek::VerifyingKey;
