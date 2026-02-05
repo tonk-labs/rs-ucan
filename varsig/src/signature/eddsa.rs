@@ -276,26 +276,36 @@ impl Ed25519SigningKey {
 
     /// Import from a [`KeyExport`].
     ///
-    /// - `Extractable(bytes)` — constructs a native `ed25519_dalek::SigningKey`.
-    /// - `NonExtractable { .. }` (WASM only) — delegates to [`web::SigningKey::import`].
+    /// On native, `Extractable(bytes)` constructs a native `ed25519_dalek::SigningKey`.
+    ///
+    /// On WASM, both variants are routed through [`web::SigningKey::import`] so
+    /// that `Extractable` seeds produce a **non-extractable** `WebCrypto` key
+    /// (matching the security default of [`web::SigningKey::import`]).
+    /// Use [`ExtractableCryptoKey::import`] when you need the key material to
+    /// remain extractable.
     ///
     /// # Errors
     ///
     /// Returns an error if the seed has the wrong length or the `WebCrypto` import fails.
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async)] // async is needed on WASM
     pub async fn import(key: impl Into<KeyExport>) -> Result<Self, Ed25519KeyError> {
         let key = key.into();
-        match key {
-            KeyExport::Extractable(ref bytes) => {
-                let seed: [u8; 32] = bytes
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| Ed25519KeyError::InvalidSeedLength(bytes.len()))?;
-                Ok(Self::Native(ed25519_dalek::SigningKey::from_bytes(&seed)))
-            }
-            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-            KeyExport::NonExtractable { .. } => {
-                Ok(Self::WebCrypto(web::SigningKey::import(key).await?))
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            Ok(Self::WebCrypto(web::SigningKey::import(key).await?))
+        }
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            match key {
+                KeyExport::Extractable(ref bytes) => {
+                    let seed: [u8; 32] = bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| Ed25519KeyError::InvalidSeedLength(bytes.len()))?;
+                    Ok(Self::Native(ed25519_dalek::SigningKey::from_bytes(&seed)))
+                }
             }
         }
     }
