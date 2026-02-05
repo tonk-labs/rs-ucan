@@ -5,8 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
 use varsig::{
-    signature::eddsa::{Ed25519, Ed25519SigningKey, Ed25519VerifyingKey},
-    signer::Sign,
+    signature::eddsa::{Ed25519, Ed25519KeyError, Ed25519SigningKey, Ed25519VerifyingKey},
+    signer::{KeyExport, Sign},
 };
 
 use super::{Did, DidSigner};
@@ -29,6 +29,9 @@ pub enum Ed25519SignerError {
     /// `WebCrypto` operation failed (WASM only).
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     WebCrypto(WebCryptoError),
+
+    /// Key import/export error.
+    Key(Ed25519KeyError),
 }
 
 impl std::fmt::Display for Ed25519SignerError {
@@ -38,6 +41,7 @@ impl std::fmt::Display for Ed25519SignerError {
             Self::Rng(e) => write!(f, "RNG error: {e}"),
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             Self::WebCrypto(e) => write!(f, "{e}"),
+            Self::Key(e) => write!(f, "{e}"),
         }
     }
 }
@@ -55,6 +59,12 @@ impl From<getrandom::Error> for Ed25519SignerError {
 impl From<WebCryptoError> for Ed25519SignerError {
     fn from(e: WebCryptoError) -> Self {
         Self::WebCrypto(e)
+    }
+}
+
+impl From<Ed25519KeyError> for Ed25519SignerError {
+    fn from(e: Ed25519KeyError) -> Self {
+        Self::Key(e)
     }
 }
 
@@ -286,27 +296,25 @@ impl Ed25519Signer {
         Ok(Self::from_signing_key(Ed25519SigningKey::from(signing_key)))
     }
 
-    /// Import a keypair from raw seed bytes.
+    /// Import a keypair from a [`KeyExport`].
     ///
-    /// On WASM, uses the `WebCrypto` API (non-extractable key by default).
-    /// On native, uses `ed25519_dalek`.
+    /// Accepts anything that converts `Into<KeyExport>`, including `&[u8; 32]`.
     ///
     /// # Errors
     ///
-    /// On WASM, returns an error if the `WebCrypto` import fails.
-    /// On native, this cannot fail.
-    #[allow(clippy::unused_async)] // async is needed on WASM
-    pub async fn import(seed: &[u8; 32]) -> Result<Self, Ed25519SignerError> {
-        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-        let signing_key = {
-            use varsig::signature::eddsa::web;
-            web::SigningKey::import(seed).await?
-        };
+    /// Returns an error if the seed has the wrong length or the `WebCrypto` import fails.
+    pub async fn import(key: impl Into<KeyExport>) -> Result<Self, Ed25519SignerError> {
+        let signing_key = Ed25519SigningKey::import(key).await?;
+        Ok(Self::from_signing_key(signing_key))
+    }
 
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        let signing_key = ed25519_dalek::SigningKey::from_bytes(seed);
-
-        Ok(Self::from_signing_key(Ed25519SigningKey::from(signing_key)))
+    /// Export the key material.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `WebCrypto` export operation fails.
+    pub async fn export(&self) -> Result<KeyExport, Ed25519SignerError> {
+        Ok(self.signer.export().await?)
     }
 
     /// Get the associated DID.
@@ -343,10 +351,20 @@ impl ExtractableCryptoKey for Ed25519Signer {
         Ok(Self::from_signing_key(Ed25519SigningKey::from(key)))
     }
 
-    async fn import(seed: &[u8; 32]) -> Result<Self, WebCryptoError> {
+    async fn import(key: impl Into<KeyExport>) -> Result<Self, WebCryptoError> {
         use varsig::signature::eddsa::web;
-        let key = <web::SigningKey as ExtractableCryptoKey>::import(seed).await?;
+        let key = <web::SigningKey as ExtractableCryptoKey>::import(key).await?;
         Ok(Self::from_signing_key(Ed25519SigningKey::from(key)))
+    }
+
+    async fn export(&self) -> Result<KeyExport, WebCryptoError> {
+        use varsig::signature::eddsa::web;
+        match &self.signer {
+            Ed25519SigningKey::WebCrypto(key) => {
+                <web::SigningKey as ExtractableCryptoKey>::export(key).await
+            }
+            Ed25519SigningKey::Native(key) => Ok(KeyExport::Extractable(key.to_bytes().to_vec())),
+        }
     }
 }
 
@@ -511,6 +529,104 @@ mod tests {
             .verify_async(msg, &sig1)
             .await
             .is_err());
+    }
+
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(
+        all(target_arch = "wasm32", target_os = "unknown"),
+        wasm_bindgen_test::wasm_bindgen_test
+    )]
+    async fn export_import_roundtrip_preserves_did() {
+        let signer = test_signer(77).await;
+        let original_did = signer.did().to_string();
+
+        let exported = signer.export().await.unwrap();
+        let restored = Ed25519Signer::import(exported).await.unwrap();
+
+        assert_eq!(
+            restored.did().to_string(),
+            original_did,
+            "Restored signer should have the same DID"
+        );
+    }
+
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(
+        all(target_arch = "wasm32", target_os = "unknown"),
+        wasm_bindgen_test::wasm_bindgen_test
+    )]
+    async fn export_import_roundtrip_produces_valid_signatures() {
+        let signer = test_signer(88).await;
+        let msg = b"roundtrip signing test";
+
+        let exported = signer.export().await.unwrap();
+        let restored = Ed25519Signer::import(exported).await.unwrap();
+
+        let signature = restored.signer().sign_async(msg).await.unwrap();
+        signer
+            .did()
+            .verifier()
+            .verify_async(msg, &signature)
+            .await
+            .expect("Original verifier should accept signature from restored signer");
+    }
+
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(
+        all(target_arch = "wasm32", target_os = "unknown"),
+        wasm_bindgen_test::wasm_bindgen_test
+    )]
+    async fn export_import_roundtrip_seed_bytes_match() {
+        let seed = [55u8; 32];
+        let signer = Ed25519Signer::import(&seed).await.unwrap();
+
+        let exported = signer.export().await.unwrap();
+        match exported {
+            KeyExport::Extractable(ref bytes) => {
+                assert_eq!(
+                    bytes.as_slice(),
+                    &seed,
+                    "Exported seed should match original"
+                );
+            }
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            KeyExport::NonExtractable { .. } => {
+                // On the web the default import creates non-extractable keys,
+                // so we just verify the DID roundtrips instead.
+                let restored = Ed25519Signer::import(exported).await.unwrap();
+                assert_eq!(restored.did().to_string(), signer.did().to_string());
+            }
+        }
+    }
+
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(
+        all(target_arch = "wasm32", target_os = "unknown"),
+        wasm_bindgen_test::wasm_bindgen_test
+    )]
+    async fn double_export_import_roundtrip() {
+        let signer = test_signer(66).await;
+
+        let exported1 = signer.export().await.unwrap();
+        let restored1 = Ed25519Signer::import(exported1).await.unwrap();
+
+        let exported2 = restored1.export().await.unwrap();
+        let restored2 = Ed25519Signer::import(exported2).await.unwrap();
+
+        assert_eq!(
+            restored2.did().to_string(),
+            signer.did().to_string(),
+            "Double roundtrip should preserve DID"
+        );
+
+        let msg = b"double roundtrip";
+        let sig = restored2.signer().sign_async(msg).await.unwrap();
+        signer
+            .did()
+            .verifier()
+            .verify_async(msg, &sig)
+            .await
+            .expect("Original verifier should accept double-roundtripped signature");
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -722,6 +838,83 @@ mod wasm_tests {
             "Public key from non-extractable key should verify signatures: {:?}",
             result.err()
         );
+    }
+
+    #[wasm_bindgen_test]
+    async fn extractable_export_import_roundtrip_preserves_seed() {
+        let seed = [42u8; 32];
+        let signer = <Ed25519Signer as ExtractableCryptoKey>::import(&seed)
+            .await
+            .unwrap();
+
+        let exported = <Ed25519Signer as ExtractableCryptoKey>::export(&signer)
+            .await
+            .unwrap();
+        match &exported {
+            KeyExport::Extractable(bytes) => {
+                assert_eq!(
+                    bytes.as_slice(),
+                    &seed,
+                    "Extractable export should return the original seed"
+                );
+            }
+            _ => panic!("Extractable key should export as Extractable"),
+        }
+
+        let restored = Ed25519Signer::import(exported).await.unwrap();
+        assert_eq!(restored.did().to_string(), signer.did().to_string());
+    }
+
+    #[wasm_bindgen_test]
+    async fn extractable_export_import_roundtrip_signs_correctly() {
+        let seed = [99u8; 32];
+        let signer = <Ed25519Signer as ExtractableCryptoKey>::import(&seed)
+            .await
+            .unwrap();
+        let msg = b"extractable roundtrip signing test";
+
+        let exported = <Ed25519Signer as ExtractableCryptoKey>::export(&signer)
+            .await
+            .unwrap();
+        let restored = Ed25519Signer::import(exported).await.unwrap();
+
+        let sig = restored.signer().sign_async(msg).await.unwrap();
+        signer
+            .did()
+            .verifier()
+            .verify_async(msg, &sig)
+            .await
+            .expect("Original verifier should accept signature from restored signer");
+    }
+
+    #[wasm_bindgen_test]
+    async fn non_extractable_export_import_roundtrip() {
+        let signer = Ed25519Signer::import(&[33u8; 32]).await.unwrap();
+        let original_did = signer.did().to_string();
+        let msg = b"non-extractable roundtrip test";
+
+        let exported = signer.export().await.unwrap();
+        match &exported {
+            KeyExport::NonExtractable { .. } => { /* expected */ }
+            KeyExport::Extractable(_) => {
+                panic!("Default import should create non-extractable key on WASM")
+            }
+        }
+
+        let restored = Ed25519Signer::import(exported).await.unwrap();
+        assert_eq!(
+            restored.did().to_string(),
+            original_did,
+            "Non-extractable roundtrip should preserve DID"
+        );
+
+        let sig = restored.signer().sign_async(msg).await.unwrap();
+        signer
+            .did()
+            .verifier()
+            .verify_async(msg, &sig)
+            .await
+            .expect("Original verifier should accept non-extractable roundtrip signature");
     }
 
     #[wasm_bindgen_test]

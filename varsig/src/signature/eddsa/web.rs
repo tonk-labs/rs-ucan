@@ -12,6 +12,7 @@
 //! service worker, they cannot exfiltrate the private key material.
 
 use super::Ed25519Signature;
+use crate::signer::KeyExport;
 use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
@@ -73,26 +74,75 @@ impl SigningKey {
         generate(false).await
     }
 
-    /// Import a keypair from raw seed bytes.
+    /// Import a keypair from a [`KeyExport`].
     ///
-    /// The imported key is **non-extractable** for security.
-    ///
-    /// # Arguments
-    ///
-    /// * `seed` - The 32-byte Ed25519 private key seed
+    /// - `Extractable(bytes)` — converts to a seed, imports via PKCS#8 (non-extractable),
+    ///   and derives the public key.
+    /// - `NonExtractable { private_key, public_key }` — exports the public key raw bytes
+    ///   and constructs a `SigningKey` with both `CryptoKey`s and cached bytes.
     ///
     /// # Errors
     ///
     /// Returns an error if the seed bytes are invalid or import fails.
+    pub async fn import(key: impl Into<KeyExport>) -> Result<Self, WebCryptoError> {
+        let key = key.into();
+        match key {
+            KeyExport::Extractable(ref bytes) => {
+                let seed: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+                    WebCryptoError::KeyImport(format!(
+                        "expected 32 seed bytes, got {}",
+                        bytes.len()
+                    ))
+                })?;
+                import(&seed, false).await
+            }
+            KeyExport::NonExtractable {
+                private_key,
+                public_key,
+            } => {
+                let subtle = get_subtle_crypto()?;
+                let public_key_bytes = export_public_key_raw(&subtle, &public_key).await?;
+                Ok(SigningKey::new(private_key, public_key, public_key_bytes))
+            }
+        }
+    }
+
+    /// Export the key material.
     ///
-    /// # Example
+    /// If the private key is extractable, returns `KeyExport::Extractable` with the
+    /// 32-byte seed extracted from the PKCS#8 encoding (bytes `[16..48]`).
+    /// Otherwise, returns `KeyExport::NonExtractable` with clones of both `CryptoKey`s.
     ///
-    /// ```ignore
-    /// let seed: [u8; 32] = /* ... */;
-    /// let key = SigningKey::import(&seed).await?;
-    /// ```
-    pub async fn import(seed: &[u8; 32]) -> Result<Self, WebCryptoError> {
-        import(seed, false).await
+    /// # Errors
+    ///
+    /// Returns an error if the PKCS#8 export fails.
+    pub async fn export(&self) -> Result<KeyExport, WebCryptoError> {
+        if self.private_key.extractable() {
+            let subtle = get_subtle_crypto()?;
+            let promise = subtle
+                .export_key("pkcs8", &self.private_key)
+                .map_err(|e| WebCryptoError::KeyExport(format!("{e:?}")))?;
+            let exported = JsFuture::from(promise)
+                .await
+                .map_err(|e| WebCryptoError::KeyExport(format!("{e:?}")))?;
+            let array = Uint8Array::new(&exported);
+            let mut pkcs8_bytes = vec![0u8; array.length() as usize];
+            array.copy_to(&mut pkcs8_bytes);
+            // PKCS#8 for Ed25519: 16-byte header, then 32-byte seed
+            if pkcs8_bytes.len() < 48 {
+                return Err(WebCryptoError::KeyExport(format!(
+                    "PKCS#8 too short: expected >= 48 bytes, got {}",
+                    pkcs8_bytes.len()
+                )));
+            }
+            let seed = pkcs8_bytes[16..48].to_vec();
+            Ok(KeyExport::Extractable(seed))
+        } else {
+            Ok(KeyExport::NonExtractable {
+                private_key: self.private_key.clone(),
+                public_key: self.public_key.clone(),
+            })
+        }
     }
 
     /// Get the verifying (public) key.
@@ -516,8 +566,13 @@ pub trait ExtractableCryptoKey: Sized {
     /// Generate a new keypair with extractable private key.
     fn generate() -> impl std::future::Future<Output = Result<Self, WebCryptoError>>;
 
-    /// Import a keypair from seed bytes with extractable private key.
-    fn import(seed: &[u8; 32]) -> impl std::future::Future<Output = Result<Self, WebCryptoError>>;
+    /// Import a keypair from a [`KeyExport`] with extractable private key.
+    fn import(
+        key: impl Into<KeyExport>,
+    ) -> impl std::future::Future<Output = Result<Self, WebCryptoError>>;
+
+    /// Export the key material.
+    fn export(&self) -> impl std::future::Future<Output = Result<KeyExport, WebCryptoError>>;
 }
 
 impl ExtractableCryptoKey for SigningKey {
@@ -525,7 +580,30 @@ impl ExtractableCryptoKey for SigningKey {
         generate(true).await
     }
 
-    async fn import(seed: &[u8; 32]) -> Result<Self, WebCryptoError> {
-        import(seed, true).await
+    async fn import(key: impl Into<KeyExport>) -> Result<Self, WebCryptoError> {
+        let key = key.into();
+        match key {
+            KeyExport::Extractable(ref bytes) => {
+                let seed: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+                    WebCryptoError::KeyImport(format!(
+                        "expected 32 seed bytes, got {}",
+                        bytes.len()
+                    ))
+                })?;
+                import(&seed, true).await
+            }
+            KeyExport::NonExtractable {
+                private_key,
+                public_key,
+            } => {
+                let subtle = get_subtle_crypto()?;
+                let public_key_bytes = export_public_key_raw(&subtle, &public_key).await?;
+                Ok(SigningKey::new(private_key, public_key, public_key_bytes))
+            }
+        }
+    }
+
+    async fn export(&self) -> Result<KeyExport, WebCryptoError> {
+        self.export().await
     }
 }
