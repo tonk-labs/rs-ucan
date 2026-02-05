@@ -591,7 +591,7 @@ mod tests {
             }
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             KeyExport::NonExtractable { .. } => {
-                // On WASM the default import creates non-extractable keys,
+                // On the web the default import creates non-extractable keys,
                 // so we just verify the DID roundtrips instead.
                 let restored = Ed25519Signer::import(exported).await.unwrap();
                 assert_eq!(restored.did().to_string(), signer.did().to_string());
