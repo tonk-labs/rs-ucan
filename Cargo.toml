@@ -24,8 +24,8 @@ nom = "8.0"
 nom-unicode = "0.4"
 nonempty = { version = "0.10.0", features = ["serialize"] }
 pretty_assertions = "1.4"
-proptest = "1.6"
-proptest-arbitrary-interop = "0.1.0"
+proptest = { version = "1.6", default-features = false, features = ["std"] }
+proptest-arbitrary-interop = { version = "0.1.0", default-features = false }
 rand = "0.9.1"
 rsa = { version = "0.9.8", features = ["sha2"] }
 serde = { version = "1.0", features = ["derive", "rc"] }

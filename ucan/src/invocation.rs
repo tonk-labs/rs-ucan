@@ -436,9 +436,6 @@ mod tests {
     use super::*;
     use testresult::TestResult;
 
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    struct EdKey(ed25519_dalek::VerifyingKey);
-
     /// Create a deterministic test signer from a seed.
     fn test_signer(seed: u8) -> Ed25519Signer {
         ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
@@ -474,7 +471,7 @@ mod tests {
             .command(vec!["read".to_string(), "write".to_string()])
             .proofs(vec![]);
 
-        let invocation = builder.try_build(&iss).await?;
+        let invocation = builder.try_build().await?;
 
         assert_eq!(invocation.issuer().to_string(), iss.to_string());
         Ok(())
@@ -493,7 +490,7 @@ mod tests {
             .subject(sub.clone())
             .command(cmd.clone())
             .proofs(vec![])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         assert_eq!(invocation.issuer(), &iss.did().clone());
@@ -516,7 +513,7 @@ mod tests {
             .subject(sub)
             .command(vec!["test".to_string()])
             .proofs(vec![])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Access the envelope internals to verify the signature
@@ -543,7 +540,7 @@ mod tests {
             .subject(sub.clone())
             .command(vec!["roundtrip".to_string()])
             .proofs(vec![])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Serialize to CBOR
@@ -579,7 +576,7 @@ mod tests {
             .command(vec!["compare".to_string()])
             .proofs(vec![])
             .nonce(nonce.clone())
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         let invocation2 = InvocationBuilder::new()
@@ -589,7 +586,7 @@ mod tests {
             .command(vec!["compare".to_string()])
             .proofs(vec![])
             .nonce(nonce)
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Both should have the same payload content
@@ -636,7 +633,7 @@ mod tests {
             .command(vec!["test".to_string()])
             .proofs(vec![])
             .nonce(nonce.clone())
-            .try_build(&iss1)
+            .try_build()
             .await?;
 
         let invocation2 = InvocationBuilder::new()
@@ -646,7 +643,7 @@ mod tests {
             .command(vec!["test".to_string()])
             .proofs(vec![])
             .nonce(nonce)
-            .try_build(&iss2)
+            .try_build()
             .await?;
 
         // Different issuers should produce different signatures
@@ -693,7 +690,7 @@ mod tests {
             .command(vec!["storage".to_string(), "read".to_string()])
             .arguments(args.clone())
             .proofs(vec![])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         assert_eq!(invocation.arguments(), &args);

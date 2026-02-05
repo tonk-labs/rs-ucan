@@ -18,6 +18,7 @@ rust-version.workspace = true
 
 [dependencies]
 arbitrary = { workspace = true, optional = true }
+async-signature = "0.5.1"
 base58 = "0.2.0"
 ed25519-dalek = "2.2"
 futures = { workspace = true }
@@ -39,7 +40,7 @@ thiserror.workspace = true
 tracing.workspace = true
 varsig = { path = "../varsig" }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2.9", features = ["js"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
@@ -56,15 +57,13 @@ web-time = "1.1"
 arbitrary = { workspace = true, optional = false }
 base64 = "0.22.1"
 pretty_assertions.workspace = true
-proptest = { workspace = true, optional = false }
-proptest-arbitrary-interop = "0.1.0"
 serde_json = "1.0"
 serde_ipld_dagjson.workspace = true
 test-log.workspace = true
 testresult.workspace = true
 tokio = { version = "1", features = ["rt", "macros"] }
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [features]

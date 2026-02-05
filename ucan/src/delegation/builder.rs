@@ -2,10 +2,9 @@
 
 use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
-    builder::AsyncBuildError,
     command::Command,
     crypto::nonce::Nonce,
-    did::{AsyncDidSigner, Did, DidSigner},
+    did::{Did, DidSigner},
     envelope::{Envelope, EnvelopePayload},
     sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset, DidSignerOrUnset},
     time::timestamp::Timestamp,
@@ -13,9 +12,12 @@ use crate::{
 };
 use ipld_core::ipld::Ipld;
 use serde_ipld_dagcbor::codec::DagCborCodec;
-use signature::SignatureEncoding;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{verify::Verify, Varsig};
+use varsig::{
+    signer::{Sign, SignerError},
+    verify::Verify,
+    Varsig,
+};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
@@ -258,27 +260,43 @@ impl<
     }
 }
 
+/// Build error type for delegation builder.
+#[derive(Debug, thiserror::Error)]
+pub enum BuildError {
+    /// Encoding error.
+    #[error("Encoding error: {0}")]
+    EncodingError(String),
+
+    /// Signing error.
+    #[error("Signing error: {0}")]
+    SigningError(#[from] signature::Error),
+}
+
+impl<Ee: std::error::Error, Ve: std::error::Error> From<SignerError<Ee, Ve>> for BuildError {
+    fn from(e: SignerError<Ee, Ve>) -> Self {
+        match e {
+            SignerError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
+            SignerError::SigningError(e) => BuildError::SigningError(e),
+            SignerError::VarsigError(e) => BuildError::EncodingError(e.to_string()),
+        }
+    }
+}
+
 /// Building methods that use async signing.
 ///
-/// This impl block uses async signing via [`AsyncDidSigner`], which works with
-/// both native `ed25519_dalek` signers and `WebCrypto` signers in WASM environments.
-/// It doesn't require the issuer type to implement `Serialize`, making it compatible
-/// with `WebCryptoEd25519Signer` (since `CryptoKey` is not serializable).
+/// This impl block uses async signing via the [`DidSigner`] trait's `signer()` method,
+/// which works with both native `ed25519_dalek` signers and `WebCrypto` signers.
 #[allow(clippy::mismatching_type_param_order)]
 impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Command> {
     /// Builds the complete, signed [`Delegation`].
     ///
-    /// This method works with any signer implementing [`AsyncDidSigner`], including
-    /// native `ed25519_dalek` signers and `WebCrypto` signers in WASM environments.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `S` - A signer that implements [`AsyncDidSigner`] with a matching DID type
+    /// Uses the issuer's signer (set via `.issuer()`) to sign the delegation.
+    /// The signing is performed asynchronously via the `AsyncSign::try_sign_async()` method.
     ///
     /// # Errors
     ///
-    /// * `AsyncBuildError::EncodingError` if encoding the payload fails
-    /// * `AsyncBuildError::SigningError` if signing fails
+    /// * `BuildError::EncodingError` if encoding the payload fails
+    /// * `BuildError::SigningError` if signing fails
     ///
     /// # Panics
     ///
@@ -291,25 +309,15 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
     /// ```ignore
     /// let signer = Ed25519Signer::new(signing_key);
     /// let delegation = DelegationBuilder::new()
-    ///     .issuer(signer.clone())
+    ///     .issuer(signer)
     ///     .audience(audience_did)
     ///     .subject(DelegatedSubject::Any)
     ///     .command(vec!["storage".into(), "read".into()])
-    ///     .try_build(&signer)
+    ///     .try_build()
     ///     .await?;
     /// ```
     #[allow(clippy::expect_used)]
-    pub async fn try_build<S>(
-        self,
-        signer: &S,
-    ) -> Result<super::Delegation<D::Did>, AsyncBuildError<S::SignError>>
-    where
-        S: AsyncDidSigner<
-            Did = D::Did,
-            Signature = <<D::Did as Did>::VarsigConfig as Verify>::Signature,
-        >,
-        S::Signature: SignatureEncoding,
-    {
+    pub async fn try_build(self) -> Result<super::Delegation<D::Did>, BuildError> {
         let payload: super::DelegationPayload<D::Did> = super::DelegationPayload {
             issuer: self.issuer.did().clone(),
             audience: self.audience,
@@ -324,21 +332,18 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        // Encode the payload
-        let encoded = serde_ipld_dagcbor::to_vec(&payload)
-            .map_err(|e| AsyncBuildError::EncodingError(e.to_string()))?;
+        let varsig_config = self.issuer.did().varsig_config().clone();
 
-        // Sign the encoded payload
-        let sig = signer
-            .sign(&encoded)
-            .await
-            .map_err(AsyncBuildError::SigningError)?;
+        // Sign the payload
+        let (sig, _encoded) = varsig_config
+            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)
+            .await?;
 
         let header: Varsig<
             <D::Did as Did>::VarsigConfig,
             DagCborCodec,
             super::DelegationPayload<D::Did>,
-        > = Varsig::new(self.issuer.did().varsig_config().clone(), DagCborCodec);
+        > = Varsig::new(varsig_config, DagCborCodec);
 
         let payload: EnvelopePayload<
             <D::Did as Did>::VarsigConfig,
@@ -349,7 +354,7 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
         let envelope: Envelope<
             <D::Did as Did>::VarsigConfig,
             super::DelegationPayload<D::Did>,
-            S::Signature,
+            <<D::Did as Did>::VarsigConfig as Verify>::Signature,
         > = Envelope(sig, payload);
 
         let delegation: super::Delegation<D::Did> = super::Delegation(envelope);

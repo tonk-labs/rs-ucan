@@ -24,10 +24,12 @@ pub mod unset;
 mod ipld;
 mod sealed;
 
-pub use builder::AsyncBuildError;
-pub use delegation::{builder::DelegationBuilder, Delegation};
-pub use did::AsyncDidSigner;
-pub use invocation::{builder::InvocationBuilder, CheckFailed, Invocation, InvocationPayload};
-
-#[cfg(target_arch = "wasm32")]
-pub use crypto::web_crypto::WebCryptoEd25519Signer;
+pub use delegation::{
+    builder::{BuildError as DelegationBuildError, DelegationBuilder},
+    Delegation,
+};
+pub use did::{Ed25519Did, Ed25519Signer};
+pub use invocation::{
+    builder::{BuildError as InvocationBuildError, InvocationBuilder},
+    CheckFailed, Invocation, InvocationPayload,
+};

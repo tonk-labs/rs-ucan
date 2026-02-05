@@ -7,8 +7,8 @@
 //!
 //! # Example
 //!
-//! ```rust
-//! use varsig::{Varsig, signature::eddsa::Ed25519};
+//! ```rust,no_run
+//! use varsig::{Varsig, signature::eddsa::{Ed25519, Ed25519SigningKey, Ed25519VerifyingKey}};
 //! use serde_ipld_dagcbor::codec::DagCborCodec;
 //! use serde::{Serialize, Deserialize};
 //!
@@ -20,6 +20,7 @@
 //!     mp: u16,
 //! }
 //!
+//! # tokio_test::block_on(async {
 //! let payload = Character {
 //!     name: "Terra Branford".to_string(),
 //!     hp: 100,
@@ -30,9 +31,12 @@
 //! let varsig: Varsig<Ed25519, DagCborCodec, Character> = Varsig::default();
 //!
 //! // Signing the payload with enforced Ed25519 and DAG-CBOR
-//! let sk = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-//! let (sig, _) = varsig.try_sign(&sk, &payload).unwrap();
-//! varsig.try_verify(&sk.verifying_key(), &payload, &sig).unwrap();
+//! let dalek_sk = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
+//! let sk: Ed25519SigningKey = dalek_sk.clone().into();
+//! let vk: Ed25519VerifyingKey = dalek_sk.verifying_key().into();
+//! let (sig, _) = varsig.try_sign(&sk, &payload).await.unwrap();
+//! varsig.try_verify(&vk, &payload, &sig).unwrap();
+//! # })
 //! ```
 
 #![allow(clippy::multiple_crate_versions)] // syn

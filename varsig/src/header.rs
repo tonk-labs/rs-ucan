@@ -47,13 +47,13 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         &self.codec
     }
 
-    /// Try to synchronously sign a payload with the provided signing key.
+    /// Try to asynchronously sign a payload with the provided signing key.
     ///
     /// # Errors
     ///
     /// If signing fails, a `SignerError` is returned.
     #[allow(clippy::type_complexity)]
-    pub fn try_sign(
+    pub async fn try_sign(
         &self,
         sk: &V::Signer,
         payload: &T,
@@ -63,7 +63,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         C: Codec<T>,
         T: Serialize,
     {
-        self.verifier_cfg.try_sign(&self.codec, sk, payload)
+        self.verifier_cfg.try_sign(&self.codec, sk, payload).await
     }
 
     /// Try to verify a signature for some payload.
@@ -250,8 +250,10 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_try_verify() -> TestResult {
+    #[tokio::test]
+    async fn test_try_verify() -> TestResult {
+        use crate::signature::eddsa::{Ed25519SigningKey, Ed25519VerifyingKey};
+
         #[derive(Debug, PartialEq, Serialize, Deserialize)]
         struct TestPayload {
             message: String,
@@ -264,12 +266,14 @@ mod tests {
         };
 
         let mut csprng = rand::thread_rng();
-        let sk = ed25519_dalek::SigningKey::generate(&mut csprng);
+        let dalek_sk = ed25519_dalek::SigningKey::generate(&mut csprng);
+        let sk: Ed25519SigningKey = dalek_sk.clone().into();
+        let vk: Ed25519VerifyingKey = dalek_sk.verifying_key().into();
         let varsig: Varsig<Ed25519, DagCborCodec, TestPayload> =
             Varsig::new(EdDsa::new(), DagCborCodec);
 
-        let (sig, _encoded) = varsig.try_sign(&sk, &payload)?;
-        varsig.try_verify(&sk.verifying_key(), &payload, &sig)?;
+        let (sig, _encoded) = varsig.try_sign(&sk, &payload).await?;
+        varsig.try_verify(&vk, &payload, &sig)?;
 
         Ok(())
     }
