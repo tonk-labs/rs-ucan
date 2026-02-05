@@ -109,34 +109,82 @@ impl TryFrom<&[u8]> for Ed25519Signature {
     }
 }
 
-/// Ed25519 verifying key wrapper.
+/// Ed25519 verifying key.
 ///
-/// This wraps `ed25519_dalek::VerifyingKey` to implement `Verifier<Ed25519Signature>`.
+/// This enum abstracts over different Ed25519 verification implementations:
+/// - `Native`: Uses `ed25519_dalek::VerifyingKey` for native platforms
+/// - `WebCrypto`: Uses the browser's `WebCrypto` API (web WASM only)
 #[cfg(feature = "edwards25519")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ed25519VerifyingKey(pub ed25519_dalek::VerifyingKey);
+#[derive(Debug, Clone)]
+#[allow(missing_copy_implementations)] // CryptoKey is not Copy on WASM
+pub enum Ed25519VerifyingKey {
+    /// Native verifying key using `ed25519_dalek`.
+    Native(native::VerifyingKey),
+
+    /// WebCrypto verifying key (web WASM only).
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    WebCrypto(web::VerifyingKey),
+}
 
 #[cfg(feature = "edwards25519")]
-impl From<ed25519_dalek::VerifyingKey> for Ed25519VerifyingKey {
-    fn from(key: ed25519_dalek::VerifyingKey) -> Self {
-        Self(key)
+impl From<native::VerifyingKey> for Ed25519VerifyingKey {
+    fn from(key: native::VerifyingKey) -> Self {
+        Self::Native(key)
+    }
+}
+
+#[cfg(all(
+    feature = "edwards25519",
+    target_arch = "wasm32",
+    target_os = "unknown"
+))]
+impl From<web::VerifyingKey> for Ed25519VerifyingKey {
+    fn from(key: web::VerifyingKey) -> Self {
+        Self::WebCrypto(key)
     }
 }
 
 #[cfg(feature = "edwards25519")]
-impl From<Ed25519VerifyingKey> for ed25519_dalek::VerifyingKey {
-    fn from(key: Ed25519VerifyingKey) -> Self {
-        key.0
+impl Ed25519VerifyingKey {
+    /// Get the raw public key bytes.
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 32] {
+        match self {
+            Self::Native(key) => key.to_bytes(),
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            Self::WebCrypto(key) => key.to_bytes(),
+        }
     }
 }
 
 #[cfg(feature = "edwards25519")]
-impl signature::Verifier<Ed25519Signature> for Ed25519VerifyingKey {
-    fn verify(&self, msg: &[u8], signature: &Ed25519Signature) -> Result<(), signature::Error> {
-        let dalek_sig = ed25519_dalek::Signature::from(*signature);
-        self.0.verify(msg, &dalek_sig)
+impl crate::verify::AsyncVerifier<Ed25519Signature> for Ed25519VerifyingKey {
+    async fn verify_async(
+        &self,
+        msg: &[u8],
+        signature: &Ed25519Signature,
+    ) -> Result<(), signature::Error> {
+        match self {
+            Self::Native(key) => {
+                use signature::Verifier;
+                let dalek_sig = ed25519_dalek::Signature::from(*signature);
+                key.verify(msg, &dalek_sig)
+            }
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            Self::WebCrypto(key) => web::verify(key.crypto_key(), msg, signature).await,
+        }
     }
 }
+
+#[cfg(feature = "edwards25519")]
+impl PartialEq for Ed25519VerifyingKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_bytes() == other.to_bytes()
+    }
+}
+
+#[cfg(feature = "edwards25519")]
+impl Eq for Ed25519VerifyingKey {}
 
 /// Ed25519 signing key.
 ///
@@ -158,11 +206,11 @@ pub enum Ed25519SigningKey {
 impl Ed25519SigningKey {
     /// Get the verifying (public) key.
     #[must_use]
-    pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
+    pub fn verifying_key(&self) -> Ed25519VerifyingKey {
         match self {
-            Self::Native(key) => key.verifying_key(),
+            Self::Native(key) => Ed25519VerifyingKey::Native(key.verifying_key()),
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-            Self::WebCrypto(key) => key.verifying_key(),
+            Self::WebCrypto(key) => Ed25519VerifyingKey::WebCrypto(key.verifying_key()),
         }
     }
 }

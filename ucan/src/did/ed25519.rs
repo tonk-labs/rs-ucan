@@ -59,18 +59,25 @@ impl From<WebCryptoError> for Ed25519SignerError {
 }
 
 /// An `Ed25519` `did:key`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Ed25519Did(pub ed25519_dalek::VerifyingKey, Ed25519);
+#[derive(Debug, Clone, PartialEq)]
+#[allow(missing_copy_implementations)] // Ed25519VerifyingKey is not Copy on WASM
+pub struct Ed25519Did(pub Ed25519VerifyingKey, Ed25519);
+
+impl From<Ed25519VerifyingKey> for Ed25519Did {
+    fn from(key: Ed25519VerifyingKey) -> Self {
+        Ed25519Did(key, Ed25519::new())
+    }
+}
 
 impl From<ed25519_dalek::VerifyingKey> for Ed25519Did {
     fn from(key: ed25519_dalek::VerifyingKey) -> Self {
-        Ed25519Did(key, Ed25519::new())
+        Ed25519Did(Ed25519VerifyingKey::Native(key), Ed25519::new())
     }
 }
 
 impl From<ed25519_dalek::SigningKey> for Ed25519Did {
     fn from(key: ed25519_dalek::SigningKey) -> Self {
-        let verifying_key = key.verifying_key();
+        let verifying_key = Ed25519VerifyingKey::Native(key.verifying_key());
         Ed25519Did(verifying_key, Ed25519::new())
     }
 }
@@ -80,7 +87,7 @@ impl std::fmt::Display for Ed25519Did {
         let mut raw_bytes = Vec::with_capacity(34);
         raw_bytes.push(0xed);
         raw_bytes.push(0x01);
-        raw_bytes.extend_from_slice(self.0.as_bytes());
+        raw_bytes.extend_from_slice(&self.0.to_bytes());
         let b58 = ToBase58::to_base58(raw_bytes.as_slice());
         write!(f, "did:key:z{b58}")
     }
@@ -118,7 +125,7 @@ impl FromStr for Ed25519Did {
             .map_err(|_| Ed25519DidFromStrError::InvalidKey)?;
         let key = ed25519_dalek::VerifyingKey::from_bytes(&key_arr)
             .map_err(|_| Ed25519DidFromStrError::InvalidKey)?;
-        Ok(Ed25519Did(key, Ed25519::new()))
+        Ok(Ed25519Did(Ed25519VerifyingKey::Native(key), Ed25519::new()))
     }
 }
 
@@ -154,7 +161,7 @@ impl Did for Ed25519Did {
     }
 
     fn verifier(&self) -> Ed25519VerifyingKey {
-        Ed25519VerifyingKey(self.0)
+        self.0.clone()
     }
 }
 
@@ -225,7 +232,7 @@ impl<'de> Deserialize<'de> for Ed25519Did {
                     ))
                 })?;
 
-                Ok(Ed25519Did(vk, Ed25519::new()))
+                Ok(Ed25519Did(Ed25519VerifyingKey::Native(vk), Ed25519::new()))
             }
         }
 
@@ -248,8 +255,7 @@ impl Ed25519Signer {
     /// Build an `Ed25519Signer` from an already-constructed `Ed25519SigningKey`.
     #[must_use]
     fn from_signing_key(signer: Ed25519SigningKey) -> Self {
-        let verifying_key = signer.verifying_key();
-        let did = Ed25519Did(verifying_key, Ed25519::new());
+        let did = Ed25519Did::from(signer.verifying_key());
         Self { did, signer }
     }
 
@@ -379,7 +385,7 @@ impl Serialize for Ed25519Signer {
 mod tests {
     use super::*;
     use async_signature::AsyncSigner;
-    use signature::Verifier;
+    use varsig::verify::AsyncVerifier;
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test_configure;
@@ -404,7 +410,7 @@ mod tests {
         let signer = test_signer(0).await;
         let did_string = signer.did().to_string();
         let parsed: Ed25519Did = did_string.parse().unwrap();
-        assert_eq!(parsed, *signer.did());
+        assert_eq!(parsed, signer.did().clone());
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -419,7 +425,7 @@ mod tests {
         let signature = signer.signer().sign_async(msg).await.unwrap();
 
         let verifier = signer.did().verifier();
-        verifier.verify(msg, &signature).unwrap();
+        verifier.verify_async(msg, &signature).await.unwrap();
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -441,8 +447,8 @@ mod tests {
         );
 
         let verifier = signer.did().verifier();
-        verifier.verify(msg1, &sig1).unwrap();
-        verifier.verify(msg2, &sig2).unwrap();
+        verifier.verify_async(msg1, &sig1).await.unwrap();
+        verifier.verify_async(msg2, &sig2).await.unwrap();
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -459,7 +465,7 @@ mod tests {
 
         let verifier = signer.did().verifier();
         assert!(
-            verifier.verify(wrong_msg, &signature).is_err(),
+            verifier.verify_async(wrong_msg, &signature).await.is_err(),
             "Verification should fail for wrong message"
         );
     }
@@ -479,12 +485,32 @@ mod tests {
 
         assert_ne!(sig1, sig2);
 
-        assert!(signer1.did().verifier().verify(msg, &sig1).is_ok());
-        assert!(signer2.did().verifier().verify(msg, &sig2).is_ok());
+        assert!(signer1
+            .did()
+            .verifier()
+            .verify_async(msg, &sig1)
+            .await
+            .is_ok());
+        assert!(signer2
+            .did()
+            .verifier()
+            .verify_async(msg, &sig2)
+            .await
+            .is_ok());
 
         // Cross-verification should fail
-        assert!(signer1.did().verifier().verify(msg, &sig2).is_err());
-        assert!(signer2.did().verifier().verify(msg, &sig1).is_err());
+        assert!(signer1
+            .did()
+            .verifier()
+            .verify_async(msg, &sig2)
+            .await
+            .is_err());
+        assert!(signer2
+            .did()
+            .verifier()
+            .verify_async(msg, &sig1)
+            .await
+            .is_err());
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -497,11 +523,11 @@ mod tests {
 
         let signer = test_signer(10).await;
         let aud_signer = test_signer(20).await;
-        let aud = *aud_signer.did();
+        let aud = aud_signer.did().clone();
 
         let delegation = DelegationBuilder::new()
             .issuer(signer.clone())
-            .audience(aud)
+            .audience(aud.clone())
             .subject(DelegatedSubject::Any)
             .command(vec!["test".to_string(), "command".to_string()])
             .try_build()
@@ -526,7 +552,7 @@ mod tests {
 
         let delegation = DelegationBuilder::new()
             .issuer(signer.clone())
-            .audience(*aud_signer.did())
+            .audience(aud_signer.did().clone())
             .subject(DelegatedSubject::Any)
             .command(vec!["roundtrip".to_string()])
             .try_build()
@@ -554,12 +580,12 @@ mod tests {
 
         let operator_signer = test_signer(30).await;
         let subject_signer = test_signer(40).await;
-        let subject_did = *subject_signer.did();
+        let subject_did = subject_signer.did().clone();
 
         let invocation = InvocationBuilder::new()
             .issuer(operator_signer.clone())
-            .audience(subject_did)
-            .subject(subject_did)
+            .audience(subject_did.clone())
+            .subject(subject_did.clone())
             .command(vec!["storage".to_string(), "get".to_string()])
             .arguments(std::collections::BTreeMap::new())
             .proofs(vec![])
@@ -573,6 +599,7 @@ mod tests {
 
         invocation
             .verify_signature()
+            .await
             .expect("Signature verification failed");
     }
 
@@ -585,12 +612,12 @@ mod tests {
         use crate::invocation::builder::InvocationBuilder;
 
         let signer = test_signer(50).await;
-        let subject_did = *signer.did();
+        let subject_did = signer.did().clone();
 
         let invocation = InvocationBuilder::new()
             .issuer(signer.clone())
-            .audience(subject_did)
-            .subject(subject_did)
+            .audience(subject_did.clone())
+            .subject(subject_did.clone())
             .command(vec!["archive".to_string(), "get".to_string()])
             .arguments(std::collections::BTreeMap::new())
             .proofs(vec![])
@@ -614,7 +641,7 @@ mod tests {
 mod wasm_tests {
     use super::*;
     use async_signature::AsyncSigner;
-    use signature::Verifier;
+    use varsig::verify::AsyncVerifier;
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
@@ -642,7 +669,7 @@ mod wasm_tests {
 
         let parsed: Result<Ed25519Did, _> = did_string.parse();
         assert!(parsed.is_ok(), "DID should be parseable");
-        assert_eq!(parsed.unwrap(), *signer.did());
+        assert_eq!(parsed.unwrap(), signer.did().clone());
     }
 
     #[wasm_bindgen_test]
@@ -689,7 +716,7 @@ mod wasm_tests {
         let msg = b"test message for non-extractable key";
         let signature = signer.signer().sign_async(msg).await.unwrap();
 
-        let result = verifier.verify(msg, &signature);
+        let result = verifier.verify_async(msg, &signature).await;
         assert!(
             result.is_ok(),
             "Public key from non-extractable key should verify signatures: {:?}",
@@ -704,21 +731,21 @@ mod wasm_tests {
         let web_signer = Ed25519Signer::import(&seed).await.unwrap();
 
         let native_signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
-        let native_public_key = native_signing_key.verifying_key();
+        let native_verifier: Ed25519VerifyingKey = native_signing_key.verifying_key().into();
 
         let web_did = web_signer.did();
         let web_verifier = web_did.verifier();
 
         assert_eq!(
-            web_verifier.0, native_public_key,
-            "Public key from WebCrypto import should match native derivation"
+            web_verifier, native_verifier,
+            "Verifier from WebCrypto import should match native derivation"
         );
 
         let msg = b"cross-platform verification test";
         let signature = web_signer.signer().sign_async(msg).await.unwrap();
 
         assert!(
-            native_public_key.verify(msg, &signature.into()).is_ok(),
+            native_verifier.verify_async(msg, &signature).await.is_ok(),
             "Native verifier should verify WebCrypto signature"
         );
     }

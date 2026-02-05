@@ -12,7 +12,7 @@
 //! service worker, they cannot exfiltrate the private key material.
 
 use super::Ed25519Signature;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
@@ -40,16 +40,19 @@ use web_sys::{CryptoKey, SubtleCrypto};
 pub struct SigningKey {
     /// The WebCrypto private key.
     private_key: CryptoKey,
-    /// The verified public key (validated eagerly at construction time).
-    public_key: VerifyingKey,
+    /// The WebCrypto public key.
+    public_key: CryptoKey,
+    /// Cached raw public key bytes.
+    public_key_bytes: [u8; 32],
 }
 
 impl SigningKey {
-    /// Create a `SigningKey` from a `CryptoKey` and a verified public key.
-    fn new(private_key: CryptoKey, public_key: VerifyingKey) -> Self {
+    /// Create a `SigningKey` from private and public `CryptoKey`s and cached public key bytes.
+    fn new(private_key: CryptoKey, public_key: CryptoKey, public_key_bytes: [u8; 32]) -> Self {
         Self {
             private_key,
             public_key,
+            public_key_bytes,
         }
     }
 
@@ -93,11 +96,9 @@ impl SigningKey {
     }
 
     /// Get the verifying (public) key.
-    ///
-    /// This is infallible because the public key bytes are validated at construction time.
     #[must_use]
-    pub const fn verifying_key(&self) -> VerifyingKey {
-        self.public_key
+    pub fn verifying_key(&self) -> VerifyingKey {
+        VerifyingKey::new(self.public_key.clone(), self.public_key_bytes)
     }
 }
 
@@ -142,12 +143,9 @@ async fn generate(extractable: bool) -> Result<SigningKey, WebCryptoError> {
         .map_err(|e| WebCryptoError::KeyGeneration(format!("failed to get publicKey: {e:?}")))?
         .unchecked_into();
 
-    // Export public key to get the raw bytes and validate eagerly
     let public_key_bytes = export_public_key_raw(&subtle, &public_key).await?;
-    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&public_key_bytes)
-        .map_err(|e| WebCryptoError::InvalidPublicKey(e.to_string()))?;
 
-    Ok(SigningKey::new(private_key, verifying_key))
+    Ok(SigningKey::new(private_key, public_key, public_key_bytes))
 }
 
 /// Import a keypair from seed bytes with the specified extractability.
@@ -181,10 +179,13 @@ async fn import(seed: &[u8; 32], extractable: bool) -> Result<SigningKey, WebCry
         .map_err(|e| WebCryptoError::KeyImport(format!("{e:?}")))?
         .unchecked_into();
 
-    // Derive public key from seed using ed25519_dalek
-    let verifying_key = ed25519_dalek::SigningKey::from_bytes(seed).verifying_key();
+    // Derive public key bytes from seed, then import into WebCrypto
+    let public_key_bytes = ed25519_dalek::SigningKey::from_bytes(seed)
+        .verifying_key()
+        .to_bytes();
+    let public_key = import_public_key_raw(&subtle, &public_key_bytes).await?;
 
-    Ok(SigningKey::new(private_key, verifying_key))
+    Ok(SigningKey::new(private_key, public_key, public_key_bytes))
 }
 
 /// Sign a message using WebCrypto.
@@ -225,6 +226,122 @@ async fn sign(key: &CryptoKey, msg: &[u8]) -> Result<Ed25519Signature, signature
     signature_array.copy_to(&mut signature_bytes);
 
     Ok(Ed25519Signature::from_bytes(signature_bytes))
+}
+
+/// Verify a signature using WebCrypto.
+pub(crate) async fn verify(
+    key: &CryptoKey,
+    msg: &[u8],
+    sig: &Ed25519Signature,
+) -> Result<(), signature::Error> {
+    let global = js_sys::global();
+
+    let crypto = Reflect::get(&global, &"crypto".into())
+        .map_err(|e| signature::Error::from_source(format!("crypto not found: {e:?}")))?;
+
+    let subtle: SubtleCrypto = Reflect::get(&crypto, &"subtle".into())
+        .map_err(|e| signature::Error::from_source(format!("subtle not found: {e:?}")))?
+        .unchecked_into();
+
+    let algorithm = Object::new();
+    Reflect::set(&algorithm, &"name".into(), &"Ed25519".into())
+        .map_err(|e| signature::Error::from_source(format!("failed to set algorithm: {e:?}")))?;
+
+    let sig_array = Uint8Array::from(sig.to_bytes().as_slice());
+    let msg_array = Uint8Array::from(msg);
+
+    let promise = subtle
+        .verify_with_object_and_buffer_source_and_buffer_source(
+            &algorithm, key, &sig_array, &msg_array,
+        )
+        .map_err(|e| signature::Error::from_source(format!("verify failed: {e:?}")))?;
+
+    let result = JsFuture::from(promise)
+        .await
+        .map_err(|e| signature::Error::from_source(format!("verify await failed: {e:?}")))?;
+
+    if result.as_bool() == Some(true) {
+        Ok(())
+    } else {
+        Err(signature::Error::new())
+    }
+}
+
+/// WebCrypto-based Ed25519 verifying key.
+///
+/// This wraps a WebCrypto `CryptoKey` for signature verification,
+/// alongside a cached copy of the raw public key bytes for synchronous
+/// DID encoding.
+#[derive(Debug, Clone)]
+pub struct VerifyingKey {
+    /// The WebCrypto public key (used for async verification).
+    crypto_key: CryptoKey,
+    /// Cached raw public key bytes (used for DID encoding).
+    public_key_bytes: [u8; 32],
+}
+
+impl VerifyingKey {
+    /// Create a `VerifyingKey` from a `CryptoKey` and its raw public key bytes.
+    fn new(crypto_key: CryptoKey, public_key_bytes: [u8; 32]) -> Self {
+        Self {
+            crypto_key,
+            public_key_bytes,
+        }
+    }
+
+    /// Get a reference to the inner `CryptoKey`.
+    #[must_use]
+    pub const fn crypto_key(&self) -> &CryptoKey {
+        &self.crypto_key
+    }
+
+    /// Get the raw public key bytes.
+    #[must_use]
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        self.public_key_bytes
+    }
+}
+
+impl VerifyingKey {
+    /// Create a `VerifyingKey` from a WebCrypto `CryptoKey`.
+    ///
+    /// Validates that the key is an Ed25519 key with `verify` usage,
+    /// and exports the raw public key bytes for synchronous DID encoding.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key's algorithm is not Ed25519,
+    /// the key does not have the `verify` usage, or the raw key
+    /// export fails.
+    pub async fn from_crypto_key(key: CryptoKey) -> Result<Self, WebCryptoError> {
+        let name = key
+            .algorithm()
+            .ok()
+            .and_then(|algo| Reflect::get(&algo, &"name".into()).ok())
+            .and_then(|v| v.as_string());
+
+        if name.as_deref() != Some("Ed25519") {
+            return Err(WebCryptoError::InvalidPublicKey(format!(
+                "expected Ed25519 algorithm, got {:?}",
+                name
+            )));
+        }
+
+        let usages = key.usages();
+        if !usages.includes(&"verify".into(), 0) {
+            return Err(WebCryptoError::InvalidPublicKey(
+                "key does not have 'verify' usage".into(),
+            ));
+        }
+
+        let subtle = get_subtle_crypto()?;
+        let public_key_bytes = export_public_key_raw(&subtle, &key).await?;
+
+        Ok(Self {
+            crypto_key: key,
+            public_key_bytes,
+        })
+    }
 }
 
 /// Errors that can occur when using WebCrypto signers.
@@ -303,6 +420,31 @@ async fn export_public_key_raw(
 
     array.copy_to(&mut bytes);
     Ok(bytes)
+}
+
+/// Import raw public key bytes as a WebCrypto `CryptoKey`.
+async fn import_public_key_raw(
+    subtle: &SubtleCrypto,
+    bytes: &[u8; 32],
+) -> Result<CryptoKey, WebCryptoError> {
+    let algorithm = Object::new();
+    Reflect::set(&algorithm, &"name".into(), &"Ed25519".into())
+        .map_err(|e| WebCryptoError::JsError(format!("{e:?}")))?;
+
+    let key_usages = js_sys::Array::new();
+    key_usages.push(&"verify".into());
+
+    let key_data = Uint8Array::from(bytes.as_slice());
+
+    let promise = subtle
+        .import_key_with_object("raw", &key_data.buffer(), &algorithm, true, &key_usages)
+        .map_err(|e| WebCryptoError::KeyImport(format!("{e:?}")))?;
+
+    let key = JsFuture::from(promise)
+        .await
+        .map_err(|e| WebCryptoError::KeyImport(format!("{e:?}")))?;
+
+    Ok(key.unchecked_into())
 }
 
 /// PKCS#8 wrapper for Ed25519 private key.

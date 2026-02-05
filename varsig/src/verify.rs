@@ -1,17 +1,45 @@
 //! Signature verification and configuration.
 
 use crate::codec::Codec;
-use signature::{SignatureEncoding, Verifier};
-use std::{error::Error, fmt::Debug};
+use signature::SignatureEncoding;
+use std::{error::Error, fmt::Debug, future::Future};
 use thiserror::Error;
+
+/// Async signature verification trait.
+///
+/// This is the async counterpart to `signature::Verifier`. All verifiers
+/// that implement `signature::Verifier` automatically get an `AsyncVerifier`
+/// impl via the blanket implementation.
+///
+/// For algorithms backed by `WebCrypto` (or other async verification backends),
+/// implement this trait directly.
+pub trait AsyncVerifier<S> {
+    /// Verify a signature for the given message asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if verification fails.
+    fn verify_async(
+        &self,
+        msg: &[u8],
+        signature: &S,
+    ) -> impl Future<Output = Result<(), signature::Error>>;
+}
+
+/// Blanket implementation: any sync `Verifier` is automatically an `AsyncVerifier`.
+impl<S, T: signature::Verifier<S>> AsyncVerifier<S> for T {
+    async fn verify_async(&self, msg: &[u8], signature: &S) -> Result<(), signature::Error> {
+        self.verify(msg, signature)
+    }
+}
 
 /// A trait for signature verification (e.g. public keys).
 pub trait Verify: Sized + Debug {
     /// The signature type for the header.
     type Signature: SignatureEncoding + Debug;
 
-    /// The associated signer (referenced or owned signing key for the header).
-    type Verifier: Verifier<Self::Signature> + Debug;
+    /// The associated verifier (e.g. public key for the header).
+    type Verifier: AsyncVerifier<Self::Signature> + Debug;
 
     /// The prefix for the signature type.
     ///
@@ -53,14 +81,17 @@ pub trait Verify: Sized + Debug {
         verifier: &Self::Verifier, // e.g. verifying ("public") key
         signature: &Self::Signature,
         payload: &T,
-    ) -> Result<(), VerificationError<C::EncodingError>> {
-        let mut buffer = Vec::new();
-        codec
-            .encode_payload(payload, &mut buffer)
-            .map_err(VerificationError::EncodingError)?;
-        verifier
-            .verify(&buffer, signature)
-            .map_err(VerificationError::VerificationError)
+    ) -> impl Future<Output = Result<(), VerificationError<C::EncodingError>>> {
+        async {
+            let mut buffer = Vec::new();
+            codec
+                .encode_payload(payload, &mut buffer)
+                .map_err(VerificationError::EncodingError)?;
+            verifier
+                .verify_async(&buffer, signature)
+                .await
+                .map_err(VerificationError::VerificationError)
+        }
     }
 }
 

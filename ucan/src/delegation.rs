@@ -574,7 +574,7 @@ mod tests {
         let verifier = iss.did().verifier();
 
         // Verify the signature using the varsig header
-        header.try_verify(&verifier, payload, signature)?;
+        header.try_verify(&verifier, payload, signature).await?;
 
         Ok(())
     }
@@ -630,7 +630,7 @@ mod tests {
         let payload = &delegation.0 .1.payload;
         let verifier = iss.did().verifier();
 
-        header.try_verify(&verifier, payload, signature)?;
+        header.try_verify(&verifier, payload, signature).await?;
 
         Ok(())
     }
@@ -676,12 +676,12 @@ mod tests {
         let sig1 = &delegation1.0 .0;
         let header1 = &delegation1.0 .1.header;
         let payload1 = &delegation1.0 .1.payload;
-        header1.try_verify(&verifier, payload1, sig1)?;
+        header1.try_verify(&verifier, payload1, sig1).await?;
 
         let sig2 = &delegation2.0 .0;
         let header2 = &delegation2.0 .1.header;
         let payload2 = &delegation2.0 .1.payload;
-        header2.try_verify(&verifier, payload2, sig2)?;
+        header2.try_verify(&verifier, payload2, sig2).await?;
 
         // With the same nonce, the signatures should be identical
         // because Ed25519 is deterministic
@@ -725,18 +725,20 @@ mod tests {
 
         // But both should verify with their respective keys
         let verifier1 = iss1.did().verifier();
-        delegation1.0 .1.header.try_verify(
-            &verifier1,
-            &delegation1.0 .1.payload,
-            &delegation1.0 .0,
-        )?;
+        delegation1
+            .0
+             .1
+            .header
+            .try_verify(&verifier1, &delegation1.0 .1.payload, &delegation1.0 .0)
+            .await?;
 
         let verifier2 = iss2.did().verifier();
-        delegation2.0 .1.header.try_verify(
-            &verifier2,
-            &delegation2.0 .1.payload,
-            &delegation2.0 .0,
-        )?;
+        delegation2
+            .0
+             .1
+            .header
+            .try_verify(&verifier2, &delegation2.0 .1.payload, &delegation2.0 .0)
+            .await?;
 
         Ok(())
     }
