@@ -118,6 +118,7 @@ impl<D: Did> Invocation<D> {
 
         header
             .try_verify(&verifier, payload, signature)
+            .await
             .map_err(InvocationCheckError::SignatureVerification)?;
 
         // 2. Check proof chain
@@ -137,7 +138,7 @@ impl<D: Did> Invocation<D> {
     /// # Errors
     ///
     /// Returns a [`SignatureVerificationError`] if signature verification fails.
-    pub fn verify_signature(&self) -> Result<(), SignatureVerificationError> {
+    pub async fn verify_signature(&self) -> Result<(), SignatureVerificationError> {
         let signature = &self.0 .0;
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
@@ -145,6 +146,7 @@ impl<D: Did> Invocation<D> {
 
         header
             .try_verify(&verifier, payload, signature)
+            .await
             .map_err(SignatureVerificationError)
     }
 }
@@ -523,7 +525,7 @@ mod tests {
         let verifier = iss.did().verifier();
 
         // Verify the signature using the varsig header
-        header.try_verify(&verifier, payload, signature)?;
+        header.try_verify(&verifier, payload, signature).await?;
 
         Ok(())
     }
@@ -602,12 +604,12 @@ mod tests {
         let sig1 = &invocation1.0 .0;
         let header1 = &invocation1.0 .1.header;
         let payload1 = &invocation1.0 .1.payload;
-        header1.try_verify(&verifier, payload1, sig1)?;
+        header1.try_verify(&verifier, payload1, sig1).await?;
 
         let sig2 = &invocation2.0 .0;
         let header2 = &invocation2.0 .1.header;
         let payload2 = &invocation2.0 .1.payload;
-        header2.try_verify(&verifier, payload2, sig2)?;
+        header2.try_verify(&verifier, payload2, sig2).await?;
 
         // With the same nonce, the signatures should be identical
         // because Ed25519 is deterministic
@@ -654,18 +656,20 @@ mod tests {
 
         // But both should verify with their respective keys
         let verifier1 = iss1.did().verifier();
-        invocation1.0 .1.header.try_verify(
-            &verifier1,
-            &invocation1.0 .1.payload,
-            &invocation1.0 .0,
-        )?;
+        invocation1
+            .0
+             .1
+            .header
+            .try_verify(&verifier1, &invocation1.0 .1.payload, &invocation1.0 .0)
+            .await?;
 
         let verifier2 = iss2.did().verifier();
-        invocation2.0 .1.header.try_verify(
-            &verifier2,
-            &invocation2.0 .1.payload,
-            &invocation2.0 .0,
-        )?;
+        invocation2
+            .0
+             .1
+            .header
+            .try_verify(&verifier2, &invocation2.0 .1.payload, &invocation2.0 .0)
+            .await?;
 
         Ok(())
     }
@@ -701,7 +705,8 @@ mod tests {
             .0
              .1
             .header
-            .try_verify(&verifier, &invocation.0 .1.payload, &invocation.0 .0)?;
+            .try_verify(&verifier, &invocation.0 .1.payload, &invocation.0 .0)
+            .await?;
 
         Ok(())
     }

@@ -573,6 +573,7 @@ mod tests {
 
         invocation
             .verify_signature()
+            .await
             .expect("Signature verification failed");
     }
 

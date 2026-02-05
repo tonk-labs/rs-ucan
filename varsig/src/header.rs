@@ -71,7 +71,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     /// # Errors
     ///
     /// If encoding or signature verification fails, a `VerificationError` is returned.
-    pub fn try_verify(
+    pub async fn try_verify(
         &self,
         verifier: &V::Verifier,
         payload: &T,
@@ -79,6 +79,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     ) -> Result<(), crate::verify::VerificationError<C::EncodingError>> {
         self.verifier_cfg()
             .try_verify(&self.codec, verifier, signature, payload)
+            .await
     }
 }
 
@@ -273,7 +274,7 @@ mod tests {
             Varsig::new(EdDsa::new(), DagCborCodec);
 
         let (sig, _encoded) = varsig.try_sign(&sk, &payload).await?;
-        varsig.try_verify(&vk, &payload, &sig)?;
+        varsig.try_verify(&vk, &payload, &sig).await?;
 
         Ok(())
     }

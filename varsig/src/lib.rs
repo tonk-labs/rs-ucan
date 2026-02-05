@@ -35,7 +35,7 @@
 //! let sk: Ed25519SigningKey = dalek_sk.clone().into();
 //! let vk: Ed25519VerifyingKey = dalek_sk.verifying_key().into();
 //! let (sig, _) = varsig.try_sign(&sk, &payload).await.unwrap();
-//! varsig.try_verify(&vk, &payload, &sig).unwrap();
+//! varsig.try_verify(&vk, &payload, &sig).await.unwrap();
 //! # })
 //! ```
 
