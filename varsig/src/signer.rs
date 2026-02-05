@@ -1,40 +1,48 @@
-//! Signature verification.
+//! Signature signing traits.
 
-use signature::Signer;
-use std::{error::Error, fmt::Debug};
+use async_signature::AsyncSigner;
+use std::{error::Error, future::Future};
 use thiserror::Error;
 
 use crate::{codec::Codec, verify::Verify};
 
-/// Synchronous signing trait.
+/// Signing trait for UCAN tokens.
+///
+/// This trait provides async signing capabilities for signers that may not
+/// have synchronous access to their signing keys, such as `WebCrypto` signers
+/// with non-extractable keys, HSMs, or remote signing services.
 pub trait Sign: Verify {
-    /// The signing key.
-    type Signer: Signer<Self::Signature>;
+    /// The signing key type.
+    type Signer: AsyncSigner<Self::Signature>;
 
     /// Signing errors.
-    type SignError: Error;
+    type SignError: Error + Send + Sync + 'static;
 
-    /// Synchronously sign a payload.
+    /// Sign a payload asynchronously.
     ///
     /// # Errors
     ///
     /// If encoding or signing fails, a `SignerError` is returned.
     #[allow(clippy::type_complexity)]
-    #[tracing::instrument(skip_all)]
     fn try_sign<T, C: Codec<T>>(
         &self,
         codec: &C,
         signer: &Self::Signer,
         payload: &T,
-    ) -> Result<(Self::Signature, Vec<u8>), SignerError<C::EncodingError, Self::SignError>> {
-        let mut buffer = Vec::new();
-        codec
-            .encode_payload(payload, &mut buffer)
-            .map_err(SignerError::EncodingError)?;
-        let sig = signer
-            .try_sign(&buffer)
-            .map_err(SignerError::SigningError)?;
-        Ok((sig, buffer))
+    ) -> impl Future<
+        Output = Result<(Self::Signature, Vec<u8>), SignerError<C::EncodingError, Self::SignError>>,
+    > {
+        async move {
+            let mut buffer = Vec::new();
+            codec
+                .encode_payload(payload, &mut buffer)
+                .map_err(SignerError::EncodingError)?;
+            let sig = signer
+                .sign_async(&buffer)
+                .await
+                .map_err(SignerError::SigningError)?;
+            Ok((sig, buffer))
+        }
     }
 }
 

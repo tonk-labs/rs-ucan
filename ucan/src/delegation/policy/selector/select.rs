@@ -253,7 +253,7 @@ impl<'a, T> Arbitrary<'a> for Select<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "property_test"))]
 mod tests {
     use super::*;
     use crate::ipld::InternalIpld;

@@ -410,9 +410,6 @@ mod tests {
     use base64::prelude::*;
     use testresult::TestResult;
 
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    struct EdKey(ed25519_dalek::VerifyingKey);
-
     /// Create a deterministic test signer from a seed.
     fn test_signer(seed: u8) -> Ed25519Signer {
         ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
@@ -445,7 +442,7 @@ mod tests {
             .subject(DelegatedSubject::Specific(sub))
             .command(vec!["read".to_string(), "write".to_string()]);
 
-        let delegation = builder.try_build(&iss).await?;
+        let delegation = builder.try_build().await?;
 
         assert_eq!(delegation.issuer().to_string(), iss.to_string());
         Ok(())
@@ -545,7 +542,7 @@ mod tests {
             .audience(aud.clone())
             .subject(DelegatedSubject::Specific(sub.clone()))
             .command(cmd.clone())
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         assert_eq!(delegation.issuer(), &iss.did().clone());
@@ -567,7 +564,7 @@ mod tests {
             .audience(aud)
             .subject(DelegatedSubject::Specific(sub))
             .command(vec!["test".to_string()])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Access the envelope internals to verify the signature
@@ -593,7 +590,7 @@ mod tests {
             .audience(aud.clone())
             .subject(DelegatedSubject::Specific(sub.clone()))
             .command(vec!["roundtrip".to_string()])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Serialize to CBOR
@@ -622,7 +619,7 @@ mod tests {
             .audience(aud)
             .subject(DelegatedSubject::Any)
             .command(vec!["any".to_string()])
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         assert_eq!(delegation.subject(), &DelegatedSubject::Any);
@@ -654,7 +651,7 @@ mod tests {
             .subject(DelegatedSubject::Specific(sub.clone()))
             .command(vec!["compare".to_string()])
             .nonce(nonce.clone())
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         let delegation2 = DelegationBuilder::new()
@@ -663,7 +660,7 @@ mod tests {
             .subject(DelegatedSubject::Specific(sub.clone()))
             .command(vec!["compare".to_string()])
             .nonce(nonce)
-            .try_build(&iss)
+            .try_build()
             .await?;
 
         // Both should have the same payload content
@@ -708,7 +705,7 @@ mod tests {
             .subject(DelegatedSubject::Any)
             .command(vec!["test".to_string()])
             .nonce(nonce.clone())
-            .try_build(&iss1)
+            .try_build()
             .await?;
 
         let delegation2 = DelegationBuilder::new()
@@ -717,7 +714,7 @@ mod tests {
             .subject(DelegatedSubject::Any)
             .command(vec!["test".to_string()])
             .nonce(nonce)
-            .try_build(&iss2)
+            .try_build()
             .await?;
 
         // Different issuers should produce different signatures

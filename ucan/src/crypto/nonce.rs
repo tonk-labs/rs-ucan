@@ -165,7 +165,6 @@ impl From<SerialNonce> for Nonce {
 
 #[cfg(test)]
 mod test {
-    use proptest::prelude::*;
     use testresult::TestResult;
 
     use super::*;
@@ -187,14 +186,20 @@ mod test {
         Ok(())
     }
 
-    proptest! {
-     #[test]
-        fn proptest_roundtrip_serde(bytes in any::<Vec<u8>>()) {
-            let nonce = Nonce::from(bytes);
-            let ipld = Ipld::from(nonce.clone());
-            let de: Nonce = ipld.try_into().unwrap();
+    #[cfg(feature = "property_test")]
+    mod proptest_tests {
+        use super::*;
+        use proptest::prelude::*;
 
-            prop_assert_eq!(nonce, de);
+        proptest! {
+            #[test]
+            fn proptest_roundtrip_serde(bytes in any::<Vec<u8>>()) {
+                let nonce = Nonce::from(bytes);
+                let ipld = Ipld::from(nonce.clone());
+                let de: Nonce = ipld.try_into().unwrap();
+
+                prop_assert_eq!(nonce, de);
+            }
         }
     }
 }

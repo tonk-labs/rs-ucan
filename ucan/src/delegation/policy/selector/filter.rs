@@ -662,42 +662,47 @@ impl<'a> Arbitrary<'a> for Filter {
 mod tests {
     use super::*;
     use pretty_assertions as pretty;
-    use proptest_arbitrary_interop::arb;
     use testresult::TestResult;
 
     mod serialization {
         use super::*;
-        use proptest::prelude::*;
 
-        proptest! {
-            #[test]
-            fn test_filter_round_trip_display_parse(filter in arb::<Filter>()) {
-                let serialized = filter.to_string();
-                let deserialized = serialized.parse(); //
-                let expected = {
-                    let mut work = filter;
-                    loop {
-                        if let Filter::Try(inner) = work.clone() {
-                            if let Filter::Try(nested) = *inner {
-                                work = Filter::Try(nested);
+        #[cfg(feature = "property_test")]
+        mod proptest_tests {
+            use super::*;
+            use proptest::prelude::*;
+            use proptest_arbitrary_interop::arb;
+
+            proptest! {
+                #[test]
+                fn test_filter_round_trip_display_parse(filter in arb::<Filter>()) {
+                    let serialized = filter.to_string();
+                    let deserialized = serialized.parse(); //
+                    let expected = {
+                        let mut work = filter;
+                        loop {
+                            if let Filter::Try(inner) = work.clone() {
+                                if let Filter::Try(nested) = *inner {
+                                    work = Filter::Try(nested);
+                                } else {
+                                    break;
+                                }
                             } else {
                                 break;
                             }
-                        } else {
-                            break;
                         }
-                    }
-                    work
-                };
+                        work
+                    };
 
-                prop_assert_eq!(Ok(expected), deserialized);
-            }
+                    prop_assert_eq!(Ok(expected), deserialized);
+                }
 
-            #[test]
-            fn test_filter_round_trip_dag_cbor(filter in arb::<Filter>()) {
-                let serialized = serde_ipld_dagcbor::to_vec(&filter).unwrap();
-                let deserialized = serde_ipld_dagcbor::from_slice::<Filter>(&serialized);
-                prop_assert_eq!(Ok(filter), deserialized);
+                #[test]
+                fn test_filter_round_trip_dag_cbor(filter in arb::<Filter>()) {
+                    let serialized = serde_ipld_dagcbor::to_vec(&filter).unwrap();
+                    let deserialized = serde_ipld_dagcbor::from_slice::<Filter>(&serialized);
+                    prop_assert_eq!(Ok(filter), deserialized);
+                }
             }
         }
 
