@@ -282,23 +282,23 @@ impl<'a> Arbitrary<'a> for Predicate {
             )),
             Pick::GreaterThan => Ok(Predicate::GreaterThan(
                 Select::<Number>::arbitrary(u)?,
-                Number::arbitrary(u)?.into(),
+                Number::arbitrary(u)?,
             )),
             Pick::GreaterThanOrEqual => Ok(Predicate::GreaterThanOrEqual(
                 Select::<Number>::arbitrary(u)?,
-                Number::arbitrary(u)?.into(),
+                Number::arbitrary(u)?,
             )),
             Pick::LessThan => Ok(Predicate::LessThan(
                 Select::<Number>::arbitrary(u)?,
-                Number::arbitrary(u)?.into(),
+                Number::arbitrary(u)?,
             )),
             Pick::LessThanOrEqual => Ok(Predicate::LessThanOrEqual(
                 Select::<Number>::arbitrary(u)?,
-                Number::arbitrary(u)?.into(),
+                Number::arbitrary(u)?,
             )),
             Pick::Like => Ok(Predicate::Like(
                 Select::<String>::arbitrary(u)?,
-                String::arbitrary(u)?.into(),
+                String::arbitrary(u)?,
             )),
             Pick::Or => {
                 let xs = Vec::<Predicate>::arbitrary(u)?;

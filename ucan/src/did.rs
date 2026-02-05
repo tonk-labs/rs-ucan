@@ -41,7 +41,7 @@ pub trait DidSigner {
 /// A trait for DID signers that support asynchronous signing.
 ///
 /// Unlike [`DidSigner`], this trait doesn't require returning a reference
-/// to the signer, making it compatible with WebCrypto non-extractable keys
+/// to the signer, making it compatible with `WebCrypto` non-extractable keys
 /// and other external signing mechanisms.
 ///
 /// # Example
@@ -73,7 +73,7 @@ pub trait AsyncDidSigner {
     /// Sign a message asynchronously.
     ///
     /// This method is designed to work with external signing mechanisms
-    /// like WebCrypto where the key material is not directly accessible,
+    /// like `WebCrypto` where the key material is not directly accessible,
     /// but also works with synchronous signers like `ed25519_dalek`.
     fn sign(&self, msg: &[u8]) -> impl Future<Output = Result<Self::Signature, Self::SignError>>;
 }

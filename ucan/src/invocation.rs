@@ -27,8 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::codec::Codec;
-use varsig::verify::Verify;
+use varsig::{codec::Codec, verify::Verify};
 
 /// Top-level UCAN Invocation.
 ///

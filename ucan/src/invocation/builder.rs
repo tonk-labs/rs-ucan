@@ -335,7 +335,7 @@ impl<
 /// Building methods that use async signing.
 ///
 /// This impl block uses async signing via [`AsyncDidSigner`], which works with
-/// both native `ed25519_dalek` signers and WebCrypto signers in WASM environments.
+/// both native `ed25519_dalek` signers and `WebCrypto` signers in WASM environments.
 /// It doesn't require the issuer type to implement `Serialize`, making it compatible
 /// with `WebCryptoEd25519Signer` (since `CryptoKey` is not serializable).
 #[allow(clippy::mismatching_type_param_order)]
@@ -343,7 +343,7 @@ impl<D: DidSigner> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
     /// Builds the complete, signed [`Invocation`].
     ///
     /// This method works with any signer implementing [`AsyncDidSigner`], including
-    /// native `ed25519_dalek` signers and WebCrypto signers in WASM environments.
+    /// native `ed25519_dalek` signers and `WebCrypto` signers in WASM environments.
     ///
     /// # Type Parameters
     ///
