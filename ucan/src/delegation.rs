@@ -13,8 +13,8 @@ use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
-    principal::{Issuer, Principal},
     envelope::{payload_tag::PayloadTag, Envelope},
+    principal::{Issuer, Principal},
     time::timestamp::Timestamp,
     unset::Unset,
 };
@@ -37,8 +37,8 @@ pub struct Delegation<D: Principal>(
 impl<D: Principal> Delegation<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
-    pub const fn builder<S: Issuer<Principal = D>>() -> DelegationBuilder<S, Unset, Unset, Unset, Unset>
-    {
+    pub const fn builder<S: Issuer<Principal = D>>(
+    ) -> DelegationBuilder<S, Unset, Unset, Unset, Unset> {
         DelegationBuilder::new()
     }
 
@@ -416,4 +416,3 @@ impl<D: Principal> PayloadTag for DelegationPayload<D> {
         "1.0.0-rc.1"
     }
 }
-

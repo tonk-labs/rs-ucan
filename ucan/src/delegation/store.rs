@@ -20,8 +20,8 @@ use thiserror::Error;
 use varsig::algorithm::SignatureAlgorithm;
 
 use crate::{
-    principal::Principal,
     future::{FutureKind, Local, Sendable},
+    principal::Principal,
 };
 
 use super::Delegation;
@@ -142,7 +142,8 @@ impl<D: Principal, H: BuildHasher> DelegationStore<Local, D, Arc<Delegation<D>>>
     }
 }
 
-impl<D: Principal + Send + Sync, H: BuildHasher + Send> DelegationStore<Sendable, D, Arc<Delegation<D>>>
+impl<D: Principal + Send + Sync, H: BuildHasher + Send>
+    DelegationStore<Sendable, D, Arc<Delegation<D>>>
     for Arc<Mutex<HashMap<Cid, Arc<Delegation<D>>, H>>>
 where
     <D as Principal>::Algorithm: Send + Sync,

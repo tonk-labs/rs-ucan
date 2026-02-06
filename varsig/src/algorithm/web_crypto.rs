@@ -150,4 +150,3 @@ impl SignatureAlgorithm for WebCrypto {
         }
     }
 }
-

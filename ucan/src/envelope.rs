@@ -12,7 +12,7 @@ use serde::{
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use signature::SignatureEncoding;
 use std::{fmt, marker::PhantomData};
-use varsig::{signature::Varsig, algorithm::SignatureAlgorithm};
+use varsig::{algorithm::SignatureAlgorithm, signature::Varsig};
 
 /// Top-level Varsig envelope type.
 #[derive(Debug, Clone, PartialEq)]

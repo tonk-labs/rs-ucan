@@ -3,8 +3,8 @@
 use crate::{
     command::Command,
     crypto::nonce::Nonce,
-    principal::{Issuer, Principal},
     envelope::{Envelope, EnvelopePayload},
+    principal::{Issuer, Principal},
     promise::Promised,
     sealed::{CommandOrUnset, IssuerOrUnset, PrincipalOrUnset, ProofsOrUnset},
     time::timestamp::Timestamp,
@@ -13,11 +13,7 @@ use crate::{
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{
-    signature::SignError,
-    algorithm::SignatureAlgorithm,
-    Varsig,
-};
+use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
 
 /// Typesafe builder for [`Invocation`].
 #[allow(private_bounds)]
@@ -313,10 +309,7 @@ impl<
 
     /// Sets the `nonce` field of the invocation.
     #[must_use]
-    pub fn nonce(
-        self,
-        nonce: Nonce,
-    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
+    pub fn nonce(self, nonce: Nonce) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,

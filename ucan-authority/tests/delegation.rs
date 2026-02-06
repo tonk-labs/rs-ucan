@@ -244,7 +244,10 @@ async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
     // because Ed25519 is deterministic
     let bytes1 = serde_ipld_dagcbor::to_vec(&delegation1)?;
     let bytes2 = serde_ipld_dagcbor::to_vec(&delegation2)?;
-    assert_eq!(bytes1, bytes2, "Serialized bytes should be identical with same nonce");
+    assert_eq!(
+        bytes1, bytes2,
+        "Serialized bytes should be identical with same nonce"
+    );
 
     Ok(())
 }

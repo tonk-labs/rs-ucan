@@ -4,8 +4,8 @@ use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
     command::Command,
     crypto::nonce::Nonce,
-    principal::{Issuer, Principal},
     envelope::{Envelope, EnvelopePayload},
+    principal::{Issuer, Principal},
     sealed::{CommandOrUnset, DelegatedSubjectOrUnset, IssuerOrUnset, PrincipalOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
@@ -13,11 +13,7 @@ use crate::{
 use ipld_core::ipld::Ipld;
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{
-    signature::SignError,
-    algorithm::SignatureAlgorithm,
-    Varsig,
-};
+use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
@@ -107,7 +103,10 @@ impl<
 
     /// Sets the `audience` field of the delegation.
     #[must_use]
-    pub fn audience(self, audience: D::Principal) -> DelegationBuilder<D, Iss, D::Principal, Subject, Cmd> {
+    pub fn audience(
+        self,
+        audience: D::Principal,
+    ) -> DelegationBuilder<D, Iss, D::Principal, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience,

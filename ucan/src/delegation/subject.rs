@@ -81,4 +81,3 @@ impl<'de, I: Principal> Deserialize<'de> for DelegatedSubject<I> {
         Err(serde::de::Error::custom("invalid subject format"))
     }
 }
-

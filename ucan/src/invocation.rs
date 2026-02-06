@@ -13,9 +13,9 @@ use crate::{
         policy::predicate::{Predicate, RunError},
         store::DelegationStore,
     },
-    principal::{Issuer, Principal},
     envelope::{payload_tag::PayloadTag, Envelope},
     future::FutureKind,
+    principal::{Issuer, Principal},
     promise::{Promised, WaitingOn},
     time::timestamp::Timestamp,
     unset::Unset,
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::{codec::Codec, algorithm::SignatureAlgorithm};
+use varsig::{algorithm::SignatureAlgorithm, codec::Codec};
 
 /// Top-level UCAN Invocation.
 ///
@@ -41,8 +41,8 @@ pub struct Invocation<D: Principal>(
 impl<D: Principal> Invocation<D> {
     /// Creates a blank [`InvocationBuilder`] instance.
     #[must_use]
-    pub const fn builder<S: Issuer<Principal = D>>() -> InvocationBuilder<S, Unset, Unset, Unset, Unset>
-    {
+    pub const fn builder<S: Issuer<Principal = D>>(
+    ) -> InvocationBuilder<S, Unset, Unset, Unset, Unset> {
         InvocationBuilder::new()
     }
 
@@ -425,4 +425,3 @@ pub enum InvocationCheckError<
     #[error(transparent)]
     StoredCheck(StoredCheckError<K, D, T, S>),
 }
-

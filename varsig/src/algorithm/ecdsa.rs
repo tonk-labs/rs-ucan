@@ -129,4 +129,3 @@ impl SignatureAlgorithm for Es256k {
         }
     }
 }
-
