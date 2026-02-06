@@ -28,8 +28,6 @@ pub use delegation::{
     builder::{BuildError as DelegationBuildError, DelegationBuilder},
     Delegation,
 };
-#[cfg(feature = "ed25519")]
-pub use principal::{Ed25519Did, Ed25519Signer, KeyExport};
 pub use invocation::{
     builder::{BuildError as InvocationBuildError, InvocationBuilder},
     CheckFailed, Invocation, InvocationPayload,

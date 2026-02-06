@@ -1,7 +1,5 @@
 //! UCAN principal and issuer traits.
 
-#[cfg(feature = "ed25519")]
-pub mod ed25519;
 mod issuer;
 
 use serde::{Deserialize, Serialize};
@@ -9,9 +7,6 @@ use std::{fmt::Debug, str::FromStr};
 use varsig::{algorithm::SignatureAlgorithm, signature::verifier::Verifier};
 
 pub use issuer::Issuer;
-
-#[cfg(feature = "ed25519")]
-pub use ed25519::{Ed25519Did, Ed25519DidFromStrError, Ed25519Signer, KeyExport};
 
 const KEY: &str = "key";
 

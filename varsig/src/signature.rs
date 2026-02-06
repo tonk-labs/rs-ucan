@@ -275,16 +275,18 @@ mod tests {
     async fn test_sign_and_verify() -> TestResult {
         use super::signer::Signer;
         use super::verifier::Verifier;
-        use crate::algorithm::eddsa::{Ed25519Signature, Ed25519SigningKey, Ed25519VerifyingKey};
+        use crate::algorithm::eddsa::Ed25519Signature;
 
         // Lightweight wrappers that impl Signer/Verifier for tests.
-        struct TestSigner(Ed25519SigningKey);
-        struct TestVerifier(Ed25519VerifyingKey);
+        struct TestSigner(ed25519_dalek::SigningKey);
+        struct TestVerifier(ed25519_dalek::VerifyingKey);
 
         impl Signer for TestSigner {
             type Signature = Ed25519Signature;
             async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
-                self.0.sign_bytes(msg).await
+                use signature::Signer as _;
+                let sig = self.0.try_sign(msg)?;
+                Ok(Ed25519Signature::from(sig))
             }
         }
 
@@ -295,7 +297,9 @@ mod tests {
                 msg: &[u8],
                 signature: &Ed25519Signature,
             ) -> Result<(), signature::Error> {
-                self.0.verify_signature(msg, signature).await
+                use signature::Verifier as _;
+                let dalek_sig = ed25519_dalek::Signature::from(*signature);
+                self.0.verify(msg, &dalek_sig)
             }
         }
 
@@ -312,8 +316,8 @@ mod tests {
 
         let mut csprng = rand::thread_rng();
         let dalek_sk = ed25519_dalek::SigningKey::generate(&mut csprng);
-        let sk = TestSigner(dalek_sk.clone().into());
-        let vk = TestVerifier(dalek_sk.verifying_key().into());
+        let sk = TestSigner(dalek_sk.clone());
+        let vk = TestVerifier(dalek_sk.verifying_key());
         let varsig: Varsig<Ed25519, DagCborCodec, TestPayload> = Varsig::new(DagCborCodec);
 
         let (sig, _encoded) = varsig.sign(&sk, &payload).await?;

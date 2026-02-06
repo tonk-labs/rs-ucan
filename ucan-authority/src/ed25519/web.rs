@@ -13,7 +13,6 @@
 
 use super::Ed25519Signature;
 use super::KeyExport;
-use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
@@ -562,7 +561,7 @@ impl From<&[u8; 32]> for Pkcs8 {
 /// # Example
 ///
 /// ```ignore
-/// use varsig::algorithm::eddsa::web::{SigningKey, ExtractableCryptoKey};
+/// use ucan_authority::ed25519::web::{SigningKey, ExtractableCryptoKey};
 ///
 /// // Generate an extractable key
 /// let key = <SigningKey as ExtractableCryptoKey>::generate().await?;
