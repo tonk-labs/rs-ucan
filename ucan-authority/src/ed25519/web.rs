@@ -11,8 +11,7 @@
 //! provides defense-in-depth: even if an attacker gains code execution in your
 //! service worker, they cannot exfiltrate the private key material.
 
-use super::Ed25519Signature;
-use super::KeyExport;
+use super::{Ed25519Signature, KeyExport};
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;

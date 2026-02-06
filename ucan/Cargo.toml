@@ -43,6 +43,8 @@ getrandom = { version = "0.2.9", features = ["js"] }
 # getrandom 0.3 is pulled in transitively by proptest → rand 0.9.
 # It needs the wasm_js feature to compile for wasm32-unknown-unknown.
 getrandom_0_3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
 
 [dev-dependencies]
 arbitrary = { workspace = true, optional = false }

@@ -27,18 +27,18 @@ thiserror.workspace = true
 ucan = { path = "../ucan" }
 varsig = { path = "../varsig" }
 
-# WASM dependencies
+# WASM dependencies (always available on wasm32-unknown-unknown)
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2", features = ["js"], optional = true }
-js-sys = { version = "0.3", optional = true }
-wasm-bindgen = { version = "0.2", optional = true }
-wasm-bindgen-futures = { version = "0.4", optional = true }
+getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Crypto",
     "SubtleCrypto",
     "CryptoKey",
     "CryptoKeyPair",
-], optional = true }
+] }
 
 [dev-dependencies]
 base64 = "0.22.1"
@@ -62,13 +62,5 @@ ed25519 = [
     "varsig/edwards25519",
     "varsig/sha2_512",
 ]
-wasm_ed25519 = [
-    "ed25519",
-    "dep:js-sys",
-    "dep:wasm-bindgen",
-    "dep:wasm-bindgen-futures",
-    "dep:web-sys",
-]
-
 [lints]
 workspace = true

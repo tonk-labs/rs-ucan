@@ -273,8 +273,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sign_and_verify() -> TestResult {
-        use super::signer::Signer;
-        use super::verifier::Verifier;
+        use super::{signer::Signer, verifier::Verifier};
         use crate::algorithm::eddsa::Ed25519Signature;
 
         // Lightweight wrappers that impl Signer/Verifier for tests.

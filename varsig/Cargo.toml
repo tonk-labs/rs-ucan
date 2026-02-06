@@ -40,7 +40,6 @@ tokio-test = "0.4"
 
 [features]
 default = ["dag_cbor", "es256", "es256k", "ed25519"]
-web_crypto = ["rs256_2048", "rs256_4096", "es256", "es384", "es512", "ed25519"]
 common = ["es256", "es256k", "ed25519"]
 
 identity = []

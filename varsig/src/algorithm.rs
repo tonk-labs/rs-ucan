@@ -1,11 +1,12 @@
 //! Signature algorithm configuration.
 
+mod any;
 pub mod curve;
 pub mod ecdsa;
 pub mod eddsa;
 pub mod hash;
 pub mod rsa;
-pub mod web_crypto;
+pub use any::{Algorithm, Signature};
 
 use ::signature::SignatureEncoding;
 use std::fmt::Debug;
