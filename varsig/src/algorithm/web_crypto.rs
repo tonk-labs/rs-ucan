@@ -4,13 +4,13 @@
 //! `WebCrypto`-compatible signature algorithms (RS256, ES256, ES384, ES512, Ed25519).
 
 #[cfg(feature = "web_crypto")]
-use crate::signature::ecdsa;
+use super::ecdsa;
 #[cfg(feature = "web_crypto")]
-use crate::signature::eddsa;
+use super::eddsa;
 #[cfg(feature = "web_crypto")]
-use crate::signature::rsa;
+use super::rsa;
 #[cfg(feature = "web_crypto")]
-use crate::verify::VarsigHeader;
+use super::SignatureAlgorithm;
 #[cfg(feature = "web_crypto")]
 use signature::SignatureEncoding;
 
@@ -38,6 +38,13 @@ pub enum WebCrypto {
 
     /// Ed25519 signature type
     Ed25519(eddsa::Ed25519),
+}
+
+#[cfg(feature = "web_crypto")]
+impl Default for WebCrypto {
+    fn default() -> Self {
+        WebCrypto::Ed25519(eddsa::Ed25519::default())
+    }
 }
 
 /// WebCrypto-compatible signature bytes.
@@ -92,7 +99,7 @@ impl From<WebCryptoSignature> for Vec<u8> {
 }
 
 #[cfg(feature = "web_crypto")]
-impl VarsigHeader for WebCrypto {
+impl SignatureAlgorithm for WebCrypto {
     type Signature = WebCryptoSignature;
 
     fn prefix(&self) -> u64 {

@@ -1,9 +1,9 @@
 //! `EdDSA` signature algorithms.
 
-use crate::{
+use super::{
     curve::Edwards25519,
     hash::{Multihasher, Sha2_512},
-    verify::VarsigHeader,
+    SignatureAlgorithm,
 };
 
 use signature::SignatureEncoding;
@@ -420,7 +420,7 @@ impl Ed25519SigningKey {
 }
 
 #[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
-impl VarsigHeader for Ed25519 {
+impl SignatureAlgorithm for Ed25519 {
     type Signature = Ed25519Signature;
 
     fn prefix(&self) -> u64 {

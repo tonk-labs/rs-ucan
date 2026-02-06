@@ -1,9 +1,9 @@
 //! RSA signature algorithm configuration.
 
 #[cfg(feature = "rsa")]
-use crate::hash::{Multihasher, Sha2_256};
+use super::hash::{Multihasher, Sha2_256};
 #[cfg(feature = "rsa")]
-use crate::verify::VarsigHeader;
+use super::SignatureAlgorithm;
 #[cfg(feature = "rsa")]
 use std::marker::PhantomData;
 
@@ -21,7 +21,7 @@ pub struct Rsa<const L: usize, H: Multihasher>(PhantomData<H>);
 pub type Rs256<const L: usize> = Rsa<L, Sha2_256>;
 
 #[cfg(feature = "rsa")]
-impl VarsigHeader for Rs256<256> {
+impl SignatureAlgorithm for Rs256<256> {
     type Signature = rsa::pkcs1v15::Signature;
 
     fn prefix(&self) -> u64 {
@@ -42,7 +42,7 @@ impl VarsigHeader for Rs256<256> {
 }
 
 #[cfg(feature = "rsa")]
-impl VarsigHeader for Rs256<512> {
+impl SignatureAlgorithm for Rs256<512> {
     type Signature = rsa::pkcs1v15::Signature;
 
     fn prefix(&self) -> u64 {

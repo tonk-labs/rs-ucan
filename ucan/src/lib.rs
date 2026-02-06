@@ -9,7 +9,7 @@ pub mod collection;
 pub mod command;
 pub mod crypto;
 pub mod delegation;
-pub mod did;
+pub mod principal;
 pub mod envelope;
 pub mod future;
 pub mod invocation;
@@ -29,7 +29,7 @@ pub use delegation::{
     Delegation,
 };
 #[cfg(feature = "ed25519")]
-pub use did::{Ed25519Did, Ed25519Signer, KeyExport};
+pub use principal::{Ed25519Did, Ed25519Signer, KeyExport};
 pub use invocation::{
     builder::{BuildError as InvocationBuildError, InvocationBuilder},
     CheckFailed, Invocation, InvocationPayload,

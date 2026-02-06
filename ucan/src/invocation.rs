@@ -13,7 +13,7 @@ use crate::{
         policy::predicate::{Predicate, RunError},
         store::DelegationStore,
     },
-    did::{Did, DidSigner},
+    principal::{Issuer, Principal},
     envelope::{payload_tag::PayloadTag, Envelope},
     future::FutureKind,
     promise::{Promised, WaitingOn},
@@ -27,21 +27,21 @@ use serde::{Deserialize, Serialize};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::{codec::Codec, verify::VarsigHeader};
+use varsig::{codec::Codec, algorithm::SignatureAlgorithm};
 
 /// Top-level UCAN Invocation.
 ///
 /// This is the token that commands the receiver to perform some action.
 /// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
-pub struct Invocation<D: Did>(
-    Envelope<D::VarsigConfig, InvocationPayload<D>, <D::VarsigConfig as VarsigHeader>::Signature>,
+pub struct Invocation<D: Principal>(
+    Envelope<D::Algorithm, InvocationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
 );
 
-impl<D: Did> Invocation<D> {
+impl<D: Principal> Invocation<D> {
     /// Creates a blank [`InvocationBuilder`] instance.
     #[must_use]
-    pub const fn builder<S: DidSigner<Did = D>>() -> InvocationBuilder<S, Unset, Unset, Unset, Unset>
+    pub const fn builder<S: Issuer<Principal = D>>() -> InvocationBuilder<S, Unset, Unset, Unset, Unset>
     {
         InvocationBuilder::new()
     }
@@ -149,13 +149,13 @@ impl<D: Did> Invocation<D> {
     }
 }
 
-impl<D: Did> Debug for Invocation<D> {
+impl<D: Principal> Debug for Invocation<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Invocation").field(&self.0).finish()
     }
 }
 
-impl<D: Did> Serialize for Invocation<D> {
+impl<D: Principal> Serialize for Invocation<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -164,9 +164,9 @@ impl<D: Did> Serialize for Invocation<D> {
     }
 }
 
-impl<'de, I: Did> Deserialize<'de> for Invocation<I>
+impl<'de, I: Principal> Deserialize<'de> for Invocation<I>
 where
-    <I::VarsigConfig as VarsigHeader>::Signature: for<'xe> Deserialize<'xe>,
+    <I::Algorithm as SignatureAlgorithm>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -179,8 +179,8 @@ where
 /// Invoke a UCAN capability. This type implements the
 /// [UCAN Invocation spec](https://github.com/ucan-wg/invocation/README.md).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "D: Did"))]
-pub struct InvocationPayload<D: Did> {
+#[serde(bound(deserialize = "D: Principal"))]
+pub struct InvocationPayload<D: Principal> {
     #[serde(rename = "iss")]
     pub(crate) issuer: D,
 
@@ -211,7 +211,7 @@ pub struct InvocationPayload<D: Did> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Did> InvocationPayload<D> {
+impl<D: Principal> InvocationPayload<D> {
     /// Getter for the `issuer` field.
     pub const fn issuer(&self) -> &D {
         &self.issuer
@@ -336,7 +336,7 @@ impl<D: Did> InvocationPayload<D> {
     }
 }
 
-impl<D: Did> PayloadTag for InvocationPayload<D> {
+impl<D: Principal> PayloadTag for InvocationPayload<D> {
     fn spec_id() -> &'static str {
         "inv"
     }
@@ -387,7 +387,7 @@ pub enum CheckFailed {
 #[derive(Debug, Clone, Error)]
 pub enum StoredCheckError<
     K: FutureKind,
-    D: Did,
+    D: Principal,
     T: Borrow<Delegation<D>>,
     S: DelegationStore<K, D, T>,
 > {
@@ -404,21 +404,21 @@ pub enum StoredCheckError<
 #[derive(Debug, Error)]
 #[error("signature verification failed: {0}")]
 pub struct SignatureVerificationError(
-    pub varsig::verify::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+    pub varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
 );
 
 /// Errors that can occur when checking an invocation (signature + proofs)
 #[derive(Debug, Error)]
 pub enum InvocationCheckError<
     K: FutureKind,
-    D: Did,
+    D: Principal,
     T: Borrow<Delegation<D>>,
     S: DelegationStore<K, D, T>,
 > {
     /// Signature verification failed
     #[error("signature verification failed: {0}")]
     SignatureVerification(
-        varsig::verify::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+        varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
     ),
 
     /// Proof chain check failed
@@ -429,7 +429,7 @@ pub enum InvocationCheckError<
 #[cfg(test)]
 mod tests {
     use crate::{
-        did::{Ed25519Did, Ed25519Signer},
+        principal::{Ed25519Did, Ed25519Signer},
         invocation::builder::InvocationBuilder,
     };
 

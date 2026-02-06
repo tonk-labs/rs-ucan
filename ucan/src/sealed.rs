@@ -1,25 +1,25 @@
 use crate::{
     command::Command,
     delegation::subject::DelegatedSubject,
-    did::{Did, DidSigner},
+    principal::{Issuer, Principal},
     unset::Unset,
 };
 use ipld_core::cid::Cid;
 
 #[doc(hidden)]
-pub trait DidOrUnset {}
-impl DidOrUnset for Unset {}
-impl<D: Did> DidOrUnset for D {}
+pub trait PrincipalOrUnset {}
+impl PrincipalOrUnset for Unset {}
+impl<D: Principal> PrincipalOrUnset for D {}
 
 #[doc(hidden)]
-pub trait DidSignerOrUnset {}
-impl DidSignerOrUnset for Unset {}
-impl<D: DidSigner> DidSignerOrUnset for D {}
+pub trait IssuerOrUnset {}
+impl IssuerOrUnset for Unset {}
+impl<D: Issuer> IssuerOrUnset for D {}
 
 #[doc(hidden)]
 pub trait DelegatedSubjectOrUnset {}
 impl DelegatedSubjectOrUnset for Unset {}
-impl<D: Did> DelegatedSubjectOrUnset for DelegatedSubject<D> {}
+impl<D: Principal> DelegatedSubjectOrUnset for DelegatedSubject<D> {}
 
 #[doc(hidden)]
 pub trait CommandOrUnset {}

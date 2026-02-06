@@ -13,7 +13,7 @@ use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
+    principal::{Issuer, Principal},
     envelope::{payload_tag::PayloadTag, Envelope},
     time::timestamp::Timestamp,
     unset::Unset,
@@ -26,18 +26,18 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::verify::VarsigHeader;
+use varsig::algorithm::SignatureAlgorithm;
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
-pub struct Delegation<D: Did>(
-    Envelope<D::VarsigConfig, DelegationPayload<D>, <D::VarsigConfig as VarsigHeader>::Signature>,
+pub struct Delegation<D: Principal>(
+    Envelope<D::Algorithm, DelegationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
 );
 
-impl<D: Did> Delegation<D> {
+impl<D: Principal> Delegation<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
-    pub const fn builder<S: DidSigner<Did = D>>() -> DelegationBuilder<S, Unset, Unset, Unset, Unset>
+    pub const fn builder<S: Issuer<Principal = D>>() -> DelegationBuilder<S, Unset, Unset, Unset, Unset>
     {
         DelegationBuilder::new()
     }
@@ -93,13 +93,13 @@ impl<D: Did> Delegation<D> {
     }
 }
 
-impl<D: Did> Debug for Delegation<D> {
+impl<D: Principal> Debug for Delegation<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
 }
 
-impl<D: Did> Serialize for Delegation<D> {
+impl<D: Principal> Serialize for Delegation<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -108,9 +108,9 @@ impl<D: Did> Serialize for Delegation<D> {
     }
 }
 
-impl<'de, I: Did> Deserialize<'de> for Delegation<I>
+impl<'de, I: Principal> Deserialize<'de> for Delegation<I>
 where
-    <I::VarsigConfig as VarsigHeader>::Signature: for<'ze> Deserialize<'ze>,
+    <I::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -123,7 +123,7 @@ where
 /// Grant or delegate a UCAN capability to another. This type implements the
 /// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct DelegationPayload<D: Did> {
+pub struct DelegationPayload<D: Principal> {
     #[serde(rename = "iss")]
     pub(crate) issuer: D,
 
@@ -149,7 +149,7 @@ pub struct DelegationPayload<D: Did> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Did> DelegationPayload<D> {
+impl<D: Principal> DelegationPayload<D> {
     /// Getter for the `issuer` field.
     pub const fn issuer(&self) -> &D {
         &self.issuer
@@ -198,7 +198,7 @@ impl<D: Did> DelegationPayload<D> {
 
 impl<'de, D> Deserialize<'de> for DelegationPayload<D>
 where
-    D: Did,
+    D: Principal,
     DelegatedSubject<D>: Deserialize<'de>,
     Predicate: Deserialize<'de>,
     Timestamp: Deserialize<'de>,
@@ -210,11 +210,11 @@ where
     where
         T: Deserializer<'de>,
     {
-        struct PayloadVisitor<D: Did>(std::marker::PhantomData<D>);
+        struct PayloadVisitor<D: Principal>(std::marker::PhantomData<D>);
 
         impl<'de, D> Visitor<'de> for PayloadVisitor<D>
         where
-            D: Did,
+            D: Principal,
             DelegatedSubject<D>: Deserialize<'de>,
             Predicate: Deserialize<'de>,
             Timestamp: Deserialize<'de>,
@@ -392,7 +392,7 @@ where
     }
 }
 
-impl<D: Did> PayloadTag for DelegationPayload<D> {
+impl<D: Principal> PayloadTag for DelegationPayload<D> {
     fn spec_id() -> &'static str {
         "dlg"
     }
@@ -405,7 +405,7 @@ impl<D: Did> PayloadTag for DelegationPayload<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::did::{Ed25519Did, Ed25519Signer};
+    use crate::principal::{Ed25519Did, Ed25519Signer};
 
     use base64::prelude::*;
     use testresult::TestResult;

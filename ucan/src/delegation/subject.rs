@@ -1,6 +1,6 @@
 //! Subject of a delegation
 
-use crate::did::Did;
+use crate::principal::Principal;
 use serde::{de::Deserialize, ser::Serializer, Serialize};
 use std::fmt::Display;
 
@@ -14,7 +14,7 @@ use std::fmt::Display;
 /// Since it is so powerful, only use `Any` directly if you know
 /// what you're doing.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
-pub enum DelegatedSubject<D: Did> {
+pub enum DelegatedSubject<D: Principal> {
     /// A specific subject (recommended)
     Specific(D),
 
@@ -22,7 +22,7 @@ pub enum DelegatedSubject<D: Did> {
     Any,
 }
 
-impl<D: Did> DelegatedSubject<D> {
+impl<D: Principal> DelegatedSubject<D> {
     /// Check that the [`DelegatedSubject`] either matches the subject, or is `Any`.
     pub fn allows(&self, subject: &D) -> bool {
         match self {
@@ -42,13 +42,13 @@ impl<D: Did> DelegatedSubject<D> {
     }
 }
 
-impl<D: Did> From<D> for DelegatedSubject<D> {
+impl<D: Principal> From<D> for DelegatedSubject<D> {
     fn from(subject: D) -> Self {
         DelegatedSubject::Specific(subject)
     }
 }
 
-impl<D: Did + Display> Display for DelegatedSubject<D> {
+impl<D: Principal + Display> Display for DelegatedSubject<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DelegatedSubject::Specific(did) => Display::fmt(did, f),
@@ -57,7 +57,7 @@ impl<D: Did + Display> Display for DelegatedSubject<D> {
     }
 }
 
-impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
+impl<D: Principal + Serialize> Serialize for DelegatedSubject<D> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             DelegatedSubject::Specific(did) => did.serialize(serializer),
@@ -66,7 +66,7 @@ impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
     }
 }
 
-impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
+impl<'de, I: Principal> Deserialize<'de> for DelegatedSubject<I> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = serde_value::Value::deserialize(deserializer)?;
 
@@ -85,7 +85,7 @@ impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::did::Ed25519Did;
+    use crate::principal::Ed25519Did;
     use serde_ipld_dagcbor::{from_slice, to_vec};
 
     #[test]

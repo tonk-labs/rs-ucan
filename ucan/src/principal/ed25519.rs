@@ -5,16 +5,16 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
 use varsig::{
-    signature::eddsa::{Ed25519, Ed25519KeyError, Ed25519SigningKey, Ed25519Signature, Ed25519VerifyingKey},
-    verify::{VarsigSigner, VarsigVerifier},
+    algorithm::eddsa::{Ed25519, Ed25519KeyError, Ed25519SigningKey, Ed25519Signature, Ed25519VerifyingKey},
+    signature::{signer::Signer, verifier::Verifier},
 };
-pub use varsig::signature::eddsa::KeyExport;
+pub use varsig::algorithm::eddsa::KeyExport;
 
-use super::{Did, DidSigner};
+use super::{Issuer, Principal};
 
 // Re-export WebCrypto types on WASM
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub use varsig::signature::eddsa::web::{ExtractableCryptoKey, WebCryptoError};
+pub use varsig::algorithm::eddsa::web::{ExtractableCryptoKey, WebCryptoError};
 
 /// Error type for [`Ed25519Signer`] operations.
 ///
@@ -72,24 +72,24 @@ impl From<Ed25519KeyError> for Ed25519SignerError {
 /// An `Ed25519` `did:key`.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_copy_implementations)] // Ed25519VerifyingKey is not Copy on WASM
-pub struct Ed25519Did(pub Ed25519VerifyingKey, Ed25519);
+pub struct Ed25519Did(pub Ed25519VerifyingKey);
 
 impl From<Ed25519VerifyingKey> for Ed25519Did {
     fn from(key: Ed25519VerifyingKey) -> Self {
-        Ed25519Did(key, Ed25519::new())
+        Ed25519Did(key)
     }
 }
 
 impl From<ed25519_dalek::VerifyingKey> for Ed25519Did {
     fn from(key: ed25519_dalek::VerifyingKey) -> Self {
-        Ed25519Did(Ed25519VerifyingKey::Native(key), Ed25519::new())
+        Ed25519Did(Ed25519VerifyingKey::Native(key))
     }
 }
 
 impl From<ed25519_dalek::SigningKey> for Ed25519Did {
     fn from(key: ed25519_dalek::SigningKey) -> Self {
         let verifying_key = Ed25519VerifyingKey::Native(key.verifying_key());
-        Ed25519Did(verifying_key, Ed25519::new())
+        Ed25519Did(verifying_key)
     }
 }
 
@@ -136,7 +136,7 @@ impl FromStr for Ed25519Did {
             .map_err(|_| Ed25519DidFromStrError::InvalidKey)?;
         let key = ed25519_dalek::VerifyingKey::from_bytes(&key_arr)
             .map_err(|_| Ed25519DidFromStrError::InvalidKey)?;
-        Ok(Ed25519Did(Ed25519VerifyingKey::Native(key), Ed25519::new()))
+        Ok(Ed25519Did(Ed25519VerifyingKey::Native(key)))
     }
 }
 
@@ -160,8 +160,8 @@ pub enum Ed25519DidFromStrError {
     InvalidKey,
 }
 
-// === VarsigVerifier impl for Ed25519Did ===
-impl VarsigVerifier for Ed25519Did {
+// === Verifier impl for Ed25519Did ===
+impl Verifier for Ed25519Did {
     type Signature = Ed25519Signature;
 
     async fn verify(
@@ -173,16 +173,8 @@ impl VarsigVerifier for Ed25519Did {
     }
 }
 
-impl Did for Ed25519Did {
-    type VarsigConfig = Ed25519;
-
-    fn did_method(&self) -> &'static str {
-        "key"
-    }
-
-    fn varsig_config(&self) -> &Self::VarsigConfig {
-        &self.1
-    }
+impl Principal for Ed25519Did {
+    type Algorithm = Ed25519;
 }
 
 impl Serialize for Ed25519Did {
@@ -252,7 +244,7 @@ impl<'de> Deserialize<'de> for Ed25519Did {
                     ))
                 })?;
 
-                Ok(Ed25519Did(Ed25519VerifyingKey::Native(vk), Ed25519::new()))
+                Ok(Ed25519Did(Ed25519VerifyingKey::Native(vk)))
             }
         }
 
@@ -333,8 +325,8 @@ impl From<ed25519_dalek::SigningKey> for Ed25519Signer {
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl From<varsig::signature::eddsa::web::SigningKey> for Ed25519Signer {
-    fn from(key: varsig::signature::eddsa::web::SigningKey) -> Self {
+impl From<varsig::algorithm::eddsa::web::SigningKey> for Ed25519Signer {
+    fn from(key: varsig::algorithm::eddsa::web::SigningKey) -> Self {
         Ed25519SigningKey::from(key).into()
     }
 }
@@ -342,19 +334,19 @@ impl From<varsig::signature::eddsa::web::SigningKey> for Ed25519Signer {
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 impl ExtractableCryptoKey for Ed25519Signer {
     async fn generate() -> Result<Self, WebCryptoError> {
-        use varsig::signature::eddsa::web;
+        use varsig::algorithm::eddsa::web;
         let key = <web::SigningKey as ExtractableCryptoKey>::generate().await?;
         Ok(Ed25519SigningKey::from(key).into())
     }
 
     async fn import(key: impl Into<KeyExport>) -> Result<Self, WebCryptoError> {
-        use varsig::signature::eddsa::web;
+        use varsig::algorithm::eddsa::web;
         let key = <web::SigningKey as ExtractableCryptoKey>::import(key).await?;
         Ok(Ed25519SigningKey::from(key).into())
     }
 
     async fn export(&self) -> Result<KeyExport, WebCryptoError> {
-        use varsig::signature::eddsa::web;
+        use varsig::algorithm::eddsa::web;
         match &self.signer {
             Ed25519SigningKey::WebCrypto(key) => {
                 <web::SigningKey as ExtractableCryptoKey>::export(key).await
@@ -370,8 +362,8 @@ impl std::fmt::Display for Ed25519Signer {
     }
 }
 
-// === VarsigSigner impl for Ed25519Signer ===
-impl VarsigSigner for Ed25519Signer {
+// === Signer impl for Ed25519Signer ===
+impl Signer for Ed25519Signer {
     type Signature = Ed25519Signature;
 
     async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
@@ -379,10 +371,10 @@ impl VarsigSigner for Ed25519Signer {
     }
 }
 
-impl DidSigner for Ed25519Signer {
-    type Did = Ed25519Did;
+impl Issuer for Ed25519Signer {
+    type Principal = Ed25519Did;
 
-    fn did(&self) -> &Self::Did {
+    fn principal(&self) -> &Self::Principal {
         &self.did
     }
 }
@@ -439,10 +431,10 @@ mod tests {
         let signer = test_signer(42).await;
         let msg = b"test message for async signing";
 
-        let signature = VarsigSigner::sign(&signer, msg).await.unwrap();
+        let signature = Signer::sign(&signer, msg).await.unwrap();
 
         let did = signer.did();
-        VarsigVerifier::verify(did, msg, &signature).await.unwrap();
+        Verifier::verify(did, msg, &signature).await.unwrap();
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -455,8 +447,8 @@ mod tests {
         let msg1 = b"first message";
         let msg2 = b"second message";
 
-        let sig1 = VarsigSigner::sign(&signer, msg1).await.unwrap();
-        let sig2 = VarsigSigner::sign(&signer, msg2).await.unwrap();
+        let sig1 = Signer::sign(&signer, msg1).await.unwrap();
+        let sig2 = Signer::sign(&signer, msg2).await.unwrap();
 
         assert_ne!(
             sig1, sig2,
@@ -464,8 +456,8 @@ mod tests {
         );
 
         let did = signer.did();
-        VarsigVerifier::verify(did, msg1, &sig1).await.unwrap();
-        VarsigVerifier::verify(did, msg2, &sig2).await.unwrap();
+        Verifier::verify(did, msg1, &sig1).await.unwrap();
+        Verifier::verify(did, msg2, &sig2).await.unwrap();
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -478,11 +470,11 @@ mod tests {
         let msg = b"original message";
         let wrong_msg = b"tampered message";
 
-        let signature = VarsigSigner::sign(&signer, msg).await.unwrap();
+        let signature = Signer::sign(&signer, msg).await.unwrap();
 
         let did = signer.did();
         assert!(
-            VarsigVerifier::verify(did, wrong_msg, &signature).await.is_err(),
+            Verifier::verify(did, wrong_msg, &signature).await.is_err(),
             "Verification should fail for wrong message"
         );
     }
@@ -497,17 +489,17 @@ mod tests {
         let signer2 = test_signer(2).await;
         let msg = b"same message";
 
-        let sig1 = VarsigSigner::sign(&signer1, msg).await.unwrap();
-        let sig2 = VarsigSigner::sign(&signer2, msg).await.unwrap();
+        let sig1 = Signer::sign(&signer1, msg).await.unwrap();
+        let sig2 = Signer::sign(&signer2, msg).await.unwrap();
 
         assert_ne!(sig1, sig2);
 
-        assert!(VarsigVerifier::verify(signer1.did(), msg, &sig1).await.is_ok());
-        assert!(VarsigVerifier::verify(signer2.did(), msg, &sig2).await.is_ok());
+        assert!(Verifier::verify(signer1.did(), msg, &sig1).await.is_ok());
+        assert!(Verifier::verify(signer2.did(), msg, &sig2).await.is_ok());
 
         // Cross-verification should fail
-        assert!(VarsigVerifier::verify(signer1.did(), msg, &sig2).await.is_err());
-        assert!(VarsigVerifier::verify(signer2.did(), msg, &sig1).await.is_err());
+        assert!(Verifier::verify(signer1.did(), msg, &sig2).await.is_err());
+        assert!(Verifier::verify(signer2.did(), msg, &sig1).await.is_err());
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -541,8 +533,8 @@ mod tests {
         let exported = signer.export().await.unwrap();
         let restored = Ed25519Signer::import(exported).await.unwrap();
 
-        let signature = VarsigSigner::sign(&restored, msg).await.unwrap();
-        VarsigVerifier::verify(signer.did(), msg, &signature)
+        let signature = Signer::sign(&restored, msg).await.unwrap();
+        Verifier::verify(signer.did(), msg, &signature)
             .await
             .expect("Original verifier should accept signature from restored signer");
     }
@@ -596,8 +588,8 @@ mod tests {
         );
 
         let msg = b"double roundtrip";
-        let sig = VarsigSigner::sign(&restored2, msg).await.unwrap();
-        VarsigVerifier::verify(signer.did(), msg, &sig)
+        let sig = Signer::sign(&restored2, msg).await.unwrap();
+        Verifier::verify(signer.did(), msg, &sig)
             .await
             .expect("Original verifier should accept double-roundtripped signature");
     }
@@ -766,7 +758,7 @@ mod wasm_tests {
 
         let signer = signer.unwrap();
         let msg = b"test";
-        let sig = VarsigSigner::sign(&signer, msg).await;
+        let sig = Signer::sign(&signer, msg).await;
         assert!(sig.is_ok());
     }
 
@@ -783,7 +775,7 @@ mod wasm_tests {
 
         let signer = signer.unwrap();
         let msg = b"test";
-        let sig = VarsigSigner::sign(&signer, msg).await;
+        let sig = Signer::sign(&signer, msg).await;
         assert!(sig.is_ok());
     }
 
@@ -800,9 +792,9 @@ mod wasm_tests {
         );
 
         let msg = b"test message for non-extractable key";
-        let signature = VarsigSigner::sign(&signer, msg).await.unwrap();
+        let signature = Signer::sign(&signer, msg).await.unwrap();
 
-        let result = VarsigVerifier::verify(did, msg, &signature).await;
+        let result = Verifier::verify(did, msg, &signature).await;
         assert!(
             result.is_ok(),
             "Public key from non-extractable key should verify signatures: {:?}",
@@ -848,8 +840,8 @@ mod wasm_tests {
             .unwrap();
         let restored = Ed25519Signer::import(exported).await.unwrap();
 
-        let sig = VarsigSigner::sign(&restored, msg).await.unwrap();
-        VarsigVerifier::verify(signer.did(), msg, &sig)
+        let sig = Signer::sign(&restored, msg).await.unwrap();
+        Verifier::verify(signer.did(), msg, &sig)
             .await
             .expect("Original verifier should accept signature from restored signer");
     }
@@ -875,8 +867,8 @@ mod wasm_tests {
             "Non-extractable roundtrip should preserve DID"
         );
 
-        let sig = VarsigSigner::sign(&restored, msg).await.unwrap();
-        VarsigVerifier::verify(signer.did(), msg, &sig)
+        let sig = Signer::sign(&restored, msg).await.unwrap();
+        Verifier::verify(signer.did(), msg, &sig)
             .await
             .expect("Original verifier should accept non-extractable roundtrip signature");
     }
@@ -898,10 +890,10 @@ mod wasm_tests {
         );
 
         let msg = b"cross-platform verification test";
-        let signature = VarsigSigner::sign(&web_signer, msg).await.unwrap();
+        let signature = Signer::sign(&web_signer, msg).await.unwrap();
 
         assert!(
-            VarsigVerifier::verify(&native_did, msg, &signature).await.is_ok(),
+            Verifier::verify(&native_did, msg, &signature).await.is_ok(),
             "Native verifier should verify WebCrypto signature"
         );
     }

@@ -1,13 +1,13 @@
 //! ECDSA signature algorithms.
 
 #[cfg(feature = "secp384r1")]
-use crate::curve::Secp384r1;
+use super::curve::Secp384r1;
 #[cfg(feature = "secp521r1")]
-use crate::curve::Secp521r1;
-use crate::{
+use super::curve::Secp521r1;
+use super::{
     curve::{Secp256k1, Secp256r1},
     hash::Multihasher,
-    verify::VarsigHeader,
+    SignatureAlgorithm,
 };
 use std::marker::PhantomData;
 
@@ -32,10 +32,10 @@ impl EcDsaCurve for Secp521r1 {}
 
 /// The ES256 signature algorithm.
 #[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
-pub type Es256 = EcDsa<Secp256r1, crate::hash::Sha2_256>;
+pub type Es256 = EcDsa<Secp256r1, super::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
-impl VarsigHeader for Es256 {
+impl SignatureAlgorithm for Es256 {
     type Signature = p256::ecdsa::Signature;
 
     fn prefix(&self) -> u64 {
@@ -57,10 +57,10 @@ impl VarsigHeader for Es256 {
 
 /// The ES384 signature algorithm.
 #[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
-pub type Es384 = EcDsa<Secp384r1, crate::hash::Sha2_384>;
+pub type Es384 = EcDsa<Secp384r1, super::hash::Sha2_384>;
 
 #[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
-impl VarsigHeader for Es384 {
+impl SignatureAlgorithm for Es384 {
     type Signature = p384::ecdsa::Signature;
 
     fn prefix(&self) -> u64 {
@@ -82,10 +82,10 @@ impl VarsigHeader for Es384 {
 
 /// The ES512 signature algorithm.
 #[cfg(all(feature = "secp521r1", feature = "sha2_512"))]
-pub type Es512 = EcDsa<Secp521r1, crate::hash::Sha2_512>;
+pub type Es512 = EcDsa<Secp521r1, super::hash::Sha2_512>;
 
 #[cfg(all(feature = "secp521r1", feature = "sha2_512"))]
-impl VarsigHeader for Es512 {
+impl SignatureAlgorithm for Es512 {
     type Signature = p521::ecdsa::Signature;
 
     fn prefix(&self) -> u64 {
@@ -107,10 +107,10 @@ impl VarsigHeader for Es512 {
 
 /// The ES256K signature algorithm.
 #[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
-pub type Es256k = EcDsa<Secp256k1, crate::hash::Sha2_256>;
+pub type Es256k = EcDsa<Secp256k1, super::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
-impl VarsigHeader for Es256k {
+impl SignatureAlgorithm for Es256k {
     type Signature = k256::ecdsa::Signature;
 
     fn prefix(&self) -> u64 {

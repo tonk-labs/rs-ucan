@@ -562,7 +562,7 @@ impl From<&[u8; 32]> for Pkcs8 {
 /// # Example
 ///
 /// ```ignore
-/// use varsig::signature::eddsa::web::{SigningKey, ExtractableCryptoKey};
+/// use varsig::algorithm::eddsa::web::{SigningKey, ExtractableCryptoKey};
 ///
 /// // Generate an extractable key
 /// let key = <SigningKey as ExtractableCryptoKey>::generate().await?;

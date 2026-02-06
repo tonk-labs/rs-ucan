@@ -12,12 +12,12 @@ use serde::{
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use signature::SignatureEncoding;
 use std::{fmt, marker::PhantomData};
-use varsig::{header::Varsig, verify::VarsigHeader};
+use varsig::{signature::Varsig, algorithm::SignatureAlgorithm};
 
 /// Top-level Varsig envelope type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Envelope<
-    V: VarsigHeader<Signature = S>,
+    V: SignatureAlgorithm<Signature = S>,
     T: Serialize + for<'ze> Deserialize<'ze>,
     S: SignatureEncoding,
 >(
@@ -28,7 +28,7 @@ pub struct Envelope<
 );
 
 impl<
-        V: VarsigHeader<Signature = S>,
+        V: SignatureAlgorithm<Signature = S>,
         T: Serialize + PayloadTag + for<'ze> Deserialize<'ze>,
         S: SignatureEncoding,
     > Serialize for Envelope<V, T, S>
@@ -44,7 +44,7 @@ impl<
 
 impl<
         'de,
-        V: VarsigHeader<Signature = S>,
+        V: SignatureAlgorithm<Signature = S>,
         T: Serialize + for<'ze> Deserialize<'ze>,
         S: SignatureEncoding + for<'ze> Deserialize<'ze>,
     > Deserialize<'de> for Envelope<V, T, S>
@@ -52,7 +52,7 @@ impl<
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct EnvelopeVisitor<V, T, S>
         where
-            V: VarsigHeader<Signature = S>,
+            V: SignatureAlgorithm<Signature = S>,
             T: Serialize + for<'ze> Deserialize<'ze>,
             S: SignatureEncoding,
         {
@@ -61,7 +61,7 @@ impl<
 
         impl<'de, V, T, S> Visitor<'de> for EnvelopeVisitor<V, T, S>
         where
-            V: VarsigHeader<Signature = S>,
+            V: SignatureAlgorithm<Signature = S>,
             T: Serialize + for<'ze> Deserialize<'ze>,
             S: SignatureEncoding + Deserialize<'de>,
         {
@@ -105,7 +105,7 @@ impl<
 
 /// Inner Varsig envelope payload type.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnvelopePayload<V: VarsigHeader, T: Serialize + for<'de> Deserialize<'de>> {
+pub struct EnvelopePayload<V: SignatureAlgorithm, T: Serialize + for<'de> Deserialize<'de>> {
     /// Varsig header.
     pub header: Varsig<V, DagCborCodec, T>,
 
@@ -113,7 +113,7 @@ pub struct EnvelopePayload<V: VarsigHeader, T: Serialize + for<'de> Deserialize<
     pub payload: T,
 }
 
-impl<V: VarsigHeader, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Serialize
+impl<V: SignatureAlgorithm, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Serialize
     for EnvelopePayload<V, T>
 {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -127,7 +127,7 @@ impl<V: VarsigHeader, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Ser
 
 impl<'de, V, T> Deserialize<'de> for EnvelopePayload<V, T>
 where
-    V: VarsigHeader,
+    V: SignatureAlgorithm,
     T: Serialize + for<'any> Deserialize<'any>,
     Varsig<V, DagCborCodec, T>: Deserialize<'de>,
 {
@@ -140,7 +140,7 @@ where
         // Note the different lifetime parameter on the Visitor:
         impl<'vde, V, T> Visitor<'vde> for EnvelopeVisitor<V, T>
         where
-            V: VarsigHeader,
+            V: SignatureAlgorithm,
             T: Serialize + for<'any> Deserialize<'any>,
             Varsig<V, DagCborCodec, T>: Deserialize<'vde>,
         {

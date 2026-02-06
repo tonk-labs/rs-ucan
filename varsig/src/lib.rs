@@ -8,12 +8,9 @@
 #![allow(clippy::multiple_crate_versions)] // syn
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod algorithm;
 pub mod codec;
-pub mod curve;
 pub mod encoding;
-pub mod hash;
-pub mod header;
 pub mod signature;
-pub mod verify;
 
-pub use header::Varsig;
+pub use signature::*;
