@@ -2,8 +2,7 @@
 
 use crate::{
     codec::Codec,
-    signer::{Sign, SignerError},
-    verify::{Verify, VarsigHeader, VarsigSigner, VarsigVerifier, VerificationError},
+    verify::{VarsigHeader, VarsigSigner, VarsigVerifier, VerificationError},
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -108,43 +107,6 @@ pub enum SignError<E: std::error::Error> {
     /// Signing error.
     #[error("Signing error: {0}")]
     SigningError(signature::Error),
-}
-
-impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
-    /// Try to asynchronously sign a payload with the provided signing key.
-    ///
-    /// # Errors
-    ///
-    /// If signing fails, a `SignerError` is returned.
-    #[allow(clippy::type_complexity)]
-    pub async fn try_sign(
-        &self,
-        sk: &V::Signer,
-        payload: &T,
-    ) -> Result<(V::Signature, Vec<u8>), SignerError<C::EncodingError, V::SignError>>
-    where
-        V: Sign,
-        C: Codec<T>,
-        T: Serialize,
-    {
-        self.verifier_cfg.try_sign(&self.codec, sk, payload).await
-    }
-
-    /// Try to verify a signature for some payload.
-    ///
-    /// # Errors
-    ///
-    /// If encoding or signature verification fails, a `VerificationError` is returned.
-    pub async fn try_verify(
-        &self,
-        verifier: &V::Verifier,
-        payload: &T,
-        signature: &V::Signature,
-    ) -> Result<(), crate::verify::VerificationError<C::EncodingError>> {
-        self.verifier_cfg()
-            .try_verify(&self.codec, verifier, signature, payload)
-            .await
-    }
 }
 
 #[cfg(feature = "dag_cbor")]
@@ -316,8 +278,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_try_verify() -> TestResult {
-        use crate::signature::eddsa::{Ed25519SigningKey, Ed25519VerifyingKey};
+    async fn test_sign_and_verify() -> TestResult {
+        use crate::signature::eddsa::{Ed25519Signature, Ed25519SigningKey, Ed25519VerifyingKey};
+        use crate::verify::{VarsigSigner, VarsigVerifier};
+
+        // Lightweight wrappers that impl VarsigSigner/VarsigVerifier for tests.
+        struct TestSigner(Ed25519SigningKey);
+        struct TestVerifier(Ed25519VerifyingKey);
+
+        impl VarsigSigner for TestSigner {
+            type Signature = Ed25519Signature;
+            async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
+                self.0.sign_bytes(msg).await
+            }
+        }
+
+        impl VarsigVerifier for TestVerifier {
+            type Signature = Ed25519Signature;
+            async fn verify(&self, msg: &[u8], signature: &Ed25519Signature) -> Result<(), signature::Error> {
+                self.0.verify_signature(msg, signature).await
+            }
+        }
 
         #[derive(Debug, PartialEq, Serialize, Deserialize)]
         struct TestPayload {
@@ -332,13 +313,13 @@ mod tests {
 
         let mut csprng = rand::thread_rng();
         let dalek_sk = ed25519_dalek::SigningKey::generate(&mut csprng);
-        let sk: Ed25519SigningKey = dalek_sk.clone().into();
-        let vk: Ed25519VerifyingKey = dalek_sk.verifying_key().into();
+        let sk = TestSigner(dalek_sk.clone().into());
+        let vk = TestVerifier(dalek_sk.verifying_key().into());
         let varsig: Varsig<Ed25519, DagCborCodec, TestPayload> =
             Varsig::new(EdDsa::new(), DagCborCodec);
 
-        let (sig, _encoded) = varsig.try_sign(&sk, &payload).await?;
-        varsig.try_verify(&vk, &payload, &sig).await?;
+        let (sig, _encoded) = varsig.sign(&sk, &payload).await?;
+        varsig.verify(&vk, &payload, &sig).await?;
 
         Ok(())
     }

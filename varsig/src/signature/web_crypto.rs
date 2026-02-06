@@ -4,15 +4,15 @@
 //! `WebCrypto`-compatible signature algorithms (RS256, ES256, ES384, ES512, Ed25519).
 
 #[cfg(feature = "web_crypto")]
-use crate::signature::ecdsa::{self, P521VerifyingKey};
+use crate::signature::ecdsa;
 #[cfg(feature = "web_crypto")]
 use crate::signature::eddsa;
 #[cfg(feature = "web_crypto")]
 use crate::signature::rsa;
 #[cfg(feature = "web_crypto")]
-use crate::verify::{Verify, VarsigHeader};
+use crate::verify::VarsigHeader;
 #[cfg(feature = "web_crypto")]
-use signature::{SignatureEncoding, Verifier};
+use signature::SignatureEncoding;
 
 /// The WebCrypto-compatible signature algorithm configuration.
 ///
@@ -91,63 +91,6 @@ impl From<WebCryptoSignature> for Vec<u8> {
     }
 }
 
-/// WebCrypto-compatible verifier (public key).
-///
-/// This enum wraps the verifying keys for each supported algorithm.
-#[cfg(feature = "web_crypto")]
-pub enum WebCryptoVerifier {
-    /// RSA 2048-bit verifying key
-    Rs256_2048(::rsa::pkcs1v15::VerifyingKey<::rsa::sha2::Sha256>),
-
-    /// RSA 4096-bit verifying key
-    Rs256_4096(::rsa::pkcs1v15::VerifyingKey<::rsa::sha2::Sha256>),
-
-    /// ES256 verifying key (P-256)
-    Es256(p256::ecdsa::VerifyingKey),
-
-    /// ES384 verifying key (P-384)
-    Es384(p384::ecdsa::VerifyingKey),
-
-    /// ES512 verifying key (P-521)
-    Es512(P521VerifyingKey),
-
-    /// Ed25519 verifying key
-    Ed25519(ed25519_dalek::VerifyingKey),
-}
-
-#[cfg(feature = "web_crypto")]
-impl std::fmt::Debug for WebCryptoVerifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Rs256_2048(_) => f.debug_tuple("Rs256_2048").finish(),
-            Self::Rs256_4096(_) => f.debug_tuple("Rs256_4096").finish(),
-            Self::Es256(key) => f.debug_tuple("Es256").field(key).finish(),
-            Self::Es384(key) => f.debug_tuple("Es384").field(key).finish(),
-            Self::Es512(key) => f.debug_tuple("Es512").field(key).finish(),
-            Self::Ed25519(key) => f.debug_tuple("Ed25519").field(key).finish(),
-        }
-    }
-}
-
-#[cfg(feature = "web_crypto")]
-impl Verifier<WebCryptoSignature> for WebCryptoVerifier {
-    fn verify(&self, msg: &[u8], signature: &WebCryptoSignature) -> Result<(), signature::Error> {
-        match (self, signature) {
-            (
-                WebCryptoVerifier::Rs256_2048(key) | WebCryptoVerifier::Rs256_4096(key),
-                WebCryptoSignature::Rsa(sig),
-            ) => key.verify(msg, sig),
-            (WebCryptoVerifier::Es256(key), WebCryptoSignature::Es256(sig)) => key.verify(msg, sig),
-            (WebCryptoVerifier::Es384(key), WebCryptoSignature::Es384(sig)) => key.verify(msg, sig),
-            (WebCryptoVerifier::Es512(key), WebCryptoSignature::Es512(sig)) => key.verify(msg, sig),
-            (WebCryptoVerifier::Ed25519(key), WebCryptoSignature::Ed25519(sig)) => {
-                key.verify(msg, sig)
-            }
-            _ => Err(signature::Error::new()), // Mismatched key and signature types
-        }
-    }
-}
-
 #[cfg(feature = "web_crypto")]
 impl VarsigHeader for WebCrypto {
     type Signature = WebCryptoSignature;
@@ -201,7 +144,3 @@ impl VarsigHeader for WebCrypto {
     }
 }
 
-#[cfg(feature = "web_crypto")]
-impl Verify for WebCrypto {
-    type Verifier = WebCryptoVerifier;
-}

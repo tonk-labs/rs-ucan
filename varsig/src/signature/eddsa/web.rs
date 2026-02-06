@@ -12,7 +12,7 @@
 //! service worker, they cannot exfiltrate the private key material.
 
 use super::Ed25519Signature;
-use crate::signer::KeyExport;
+use super::KeyExport;
 use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
@@ -152,8 +152,13 @@ impl SigningKey {
     }
 }
 
-impl async_signature::AsyncSigner<Ed25519Signature> for SigningKey {
-    async fn sign_async(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
+impl SigningKey {
+    /// Sign a message using the WebCrypto API.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if signing fails.
+    pub async fn sign_bytes(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
         sign(&self.private_key, msg).await
     }
 }

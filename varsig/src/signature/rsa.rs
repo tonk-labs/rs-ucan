@@ -3,7 +3,7 @@
 #[cfg(feature = "rsa")]
 use crate::hash::{Multihasher, Sha2_256};
 #[cfg(feature = "rsa")]
-use crate::verify::{Verify, VarsigHeader};
+use crate::verify::VarsigHeader;
 #[cfg(feature = "rsa")]
 use std::marker::PhantomData;
 
@@ -42,11 +42,6 @@ impl VarsigHeader for Rs256<256> {
 }
 
 #[cfg(feature = "rsa")]
-impl Verify for Rs256<256> {
-    type Verifier = rsa::pkcs1v15::VerifyingKey<rsa::sha2::Sha256>;
-}
-
-#[cfg(feature = "rsa")]
 impl VarsigHeader for Rs256<512> {
     type Signature = rsa::pkcs1v15::Signature;
 
@@ -65,9 +60,4 @@ impl VarsigHeader for Rs256<512> {
             None
         }
     }
-}
-
-#[cfg(feature = "rsa")]
-impl Verify for Rs256<512> {
-    type Verifier = rsa::pkcs1v15::VerifyingKey<rsa::sha2::Sha256>;
 }

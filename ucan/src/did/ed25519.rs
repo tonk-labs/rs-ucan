@@ -8,7 +8,7 @@ use varsig::{
     signature::eddsa::{Ed25519, Ed25519KeyError, Ed25519SigningKey, Ed25519Signature, Ed25519VerifyingKey},
     verify::{VarsigSigner, VarsigVerifier},
 };
-pub use varsig::signer::KeyExport;
+pub use varsig::signature::eddsa::KeyExport;
 
 use super::{Did, DidSigner};
 
@@ -169,8 +169,7 @@ impl VarsigVerifier for Ed25519Did {
         msg: &[u8],
         signature: &Ed25519Signature,
     ) -> Result<(), signature::Error> {
-        use varsig::verify::AsyncVerifier;
-        self.0.verify_async(msg, signature).await
+        self.0.verify_signature(msg, signature).await
     }
 }
 
@@ -376,8 +375,7 @@ impl VarsigSigner for Ed25519Signer {
     type Signature = Ed25519Signature;
 
     async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
-        use async_signature::AsyncSigner;
-        self.signer.sign_async(msg).await
+        self.signer.sign_bytes(msg).await
     }
 }
 

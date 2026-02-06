@@ -14,7 +14,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-async-signature.workspace = true
 bytes = { version =  "1.10", optional = true }
 ed25519-dalek = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }

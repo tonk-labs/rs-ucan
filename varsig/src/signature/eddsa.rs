@@ -3,12 +3,9 @@
 use crate::{
     curve::Edwards25519,
     hash::{Multihasher, Sha2_512},
-    signer::Sign,
-    verify::{Verify, VarsigHeader},
+    verify::VarsigHeader,
 };
 
-#[cfg(feature = "edwards25519")]
-use crate::signer::KeyExport;
 use signature::SignatureEncoding;
 use std::marker::PhantomData;
 
@@ -24,6 +21,42 @@ pub mod native;
     target_os = "unknown"
 ))]
 pub mod web;
+
+/// Ed25519 key material for import/export.
+///
+/// On native platforms, only the `Extractable` variant is available.
+/// On WASM (`wasm32-unknown-unknown`), a `NonExtractable` variant is also
+/// available for opaque `WebCrypto` key pairs whose key material cannot be read.
+#[derive(Debug, Clone)]
+pub enum KeyExport {
+    /// Raw seed bytes — the key material is accessible.
+    Extractable(Vec<u8>),
+
+    /// Opaque WebCrypto key pair — key material is NOT accessible.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    NonExtractable {
+        /// The WebCrypto private key.
+        private_key: web_sys::CryptoKey,
+        /// The WebCrypto public key.
+        public_key: web_sys::CryptoKey,
+    },
+}
+
+impl From<&[u8; 32]> for KeyExport {
+    fn from(seed: &[u8; 32]) -> Self {
+        KeyExport::Extractable(seed.to_vec())
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl From<web_sys::CryptoKeyPair> for KeyExport {
+    fn from(pair: web_sys::CryptoKeyPair) -> Self {
+        KeyExport::NonExtractable {
+            private_key: pair.get_private_key(),
+            public_key: pair.get_public_key(),
+        }
+    }
+}
 
 /// The `EdDSA` signature algorithm.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -161,8 +194,14 @@ impl Ed25519VerifyingKey {
 }
 
 #[cfg(feature = "edwards25519")]
-impl crate::verify::AsyncVerifier<Ed25519Signature> for Ed25519VerifyingKey {
-    async fn verify_async(
+impl Ed25519VerifyingKey {
+    /// Verify a signature for the given message asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if verification fails.
+    #[allow(clippy::unused_async)]
+    pub async fn verify_signature(
         &self,
         msg: &[u8],
         signature: &Ed25519Signature,
@@ -360,8 +399,14 @@ impl From<web::SigningKey> for Ed25519SigningKey {
 }
 
 #[cfg(feature = "edwards25519")]
-impl async_signature::AsyncSigner<Ed25519Signature> for Ed25519SigningKey {
-    async fn sign_async(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
+impl Ed25519SigningKey {
+    /// Sign a message asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if signing fails.
+    #[allow(clippy::unused_async)]
+    pub async fn sign_bytes(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
         match self {
             Self::Native(key) => {
                 use signature::Signer;
@@ -369,7 +414,7 @@ impl async_signature::AsyncSigner<Ed25519Signature> for Ed25519SigningKey {
                 Ok(Ed25519Signature::from(sig))
             }
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-            Self::WebCrypto(key) => key.sign_async(msg).await,
+            Self::WebCrypto(key) => key.sign_bytes(msg).await,
         }
     }
 }
@@ -395,13 +440,3 @@ impl VarsigHeader for Ed25519 {
     }
 }
 
-#[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
-impl Verify for Ed25519 {
-    type Verifier = Ed25519VerifyingKey;
-}
-
-#[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
-impl Sign for Ed25519 {
-    type Signer = Ed25519SigningKey;
-    type SignError = signature::Error;
-}
