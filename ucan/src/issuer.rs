@@ -1,7 +1,8 @@
 //! UCAN issuer trait.
 
-use super::Principal;
 use varsig::{algorithm::SignatureAlgorithm, signature::signer::Signer};
+
+use crate::principal::Principal;
 
 /// A UCAN issuer — a principal that can sign tokens.
 ///

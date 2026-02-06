@@ -1,6 +1,5 @@
 //! Core UCAN functionality.
 
-#![allow(clippy::multiple_crate_versions)] // syn
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod builder;
@@ -12,6 +11,7 @@ pub mod delegation;
 pub mod envelope;
 pub mod future;
 pub mod invocation;
+pub mod issuer;
 pub mod number;
 pub mod principal;
 pub mod promise;

@@ -1,7 +1,5 @@
 use crate::{
-    command::Command,
-    delegation::subject::DelegatedSubject,
-    principal::{Issuer, Principal},
+    command::Command, delegation::subject::DelegatedSubject, issuer::Issuer, principal::Principal,
     unset::Unset,
 };
 use ipld_core::cid::Cid;

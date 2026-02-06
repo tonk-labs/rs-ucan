@@ -14,7 +14,8 @@ use crate::{
     command::Command,
     crypto::nonce::Nonce,
     envelope::{payload_tag::PayloadTag, Envelope},
-    principal::{Issuer, Principal},
+    issuer::Issuer,
+    principal::Principal,
     time::timestamp::Timestamp,
     unset::Unset,
 };

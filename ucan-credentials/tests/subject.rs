@@ -1,11 +1,11 @@
 //! DelegatedSubject tests using Ed25519 concrete types.
 //!
 //! These tests were moved from `ucan/src/delegation/subject.rs` since they
-//! depend on concrete Ed25519 key types from `ucan-authority`.
+//! depend on concrete Ed25519 key types from `ucan-credentials`.
 
 use serde_ipld_dagcbor::{from_slice, to_vec};
 use ucan::delegation::subject::DelegatedSubject;
-use ucan_authority::ed25519::Ed25519Did;
+use ucan_credentials::ed25519::Ed25519Did;
 
 #[test]
 fn any_serializes_to_null() {

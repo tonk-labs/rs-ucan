@@ -560,7 +560,7 @@ impl From<&[u8; 32]> for Pkcs8 {
 /// # Example
 ///
 /// ```ignore
-/// use ucan_authority::ed25519::web::{SigningKey, ExtractableCryptoKey};
+/// use ucan_credentials::ed25519::web::{SigningKey, ExtractableCryptoKey};
 ///
 /// // Generate an extractable key
 /// let key = <SigningKey as ExtractableCryptoKey>::generate().await?;

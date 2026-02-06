@@ -1,12 +1,8 @@
-//! UCAN principal and issuer traits.
-
-mod issuer;
+//! UCAN principal trait.
 
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, str::FromStr};
 use varsig::{algorithm::SignatureAlgorithm, signature::verifier::Verifier};
-
-pub use issuer::Issuer;
 
 const KEY: &str = "key";
 

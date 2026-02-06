@@ -1,5 +1,5 @@
 [package]
-name = "ucan-authority"
+name = "ucan-credentials"
 description = "Concrete key types for UCAN authentication"
 version = "0.1.0"
 authors = [

@@ -4,7 +4,7 @@ use base58::ToBase58;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
-use ucan::principal::{Issuer, Principal};
+use ucan::{issuer::Issuer, principal::Principal};
 use varsig::{
     algorithm::eddsa::{Ed25519, Ed25519Signature},
     signature::{signer::Signer, verifier::Verifier},

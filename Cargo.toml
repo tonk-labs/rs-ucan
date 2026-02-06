@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "ucan",
-    "ucan-authority",
+    "ucan-credentials",
     "ucan_wasm",
     "varsig"
 ]
@@ -64,6 +64,7 @@ todo = "warn"
 unneeded_field_pattern = "warn"
 unwrap_used = "warn"
 wildcard_enum_match_arm = "warn"
+multiple_crate_versions = "allow" # getrandom v0.2/v0.3 coexist via transitive deps
 
 all = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }

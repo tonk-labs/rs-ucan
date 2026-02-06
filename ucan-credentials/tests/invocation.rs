@@ -1,7 +1,7 @@
 //! Invocation integration tests using Ed25519 concrete types.
 //!
 //! These tests were moved from `ucan/src/invocation.rs` since they
-//! depend on concrete Ed25519 key types from `ucan-authority`.
+//! depend on concrete Ed25519 key types from `ucan-credentials`.
 
 use testresult::TestResult;
 use ucan::{
@@ -10,7 +10,7 @@ use ucan::{
     invocation::{builder::InvocationBuilder, Invocation},
     promise::Promised,
 };
-use ucan_authority::ed25519::{Ed25519Did, Ed25519Signer};
+use ucan_credentials::ed25519::{Ed25519Did, Ed25519Signer};
 
 /// Create a deterministic test signer from a seed.
 fn test_signer(seed: u8) -> Ed25519Signer {

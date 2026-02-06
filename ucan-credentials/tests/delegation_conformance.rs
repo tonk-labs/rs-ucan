@@ -5,7 +5,7 @@ mod delegation_conformance {
     use base64::prelude::*;
     use testresult::TestResult;
     use ucan::Delegation;
-    use ucan_authority::ed25519::Ed25519Did;
+    use ucan_credentials::ed25519::Ed25519Did;
 
     const DELEGATION_FIXTURE_STR: &str = include_str!("./fixtures/delegation.json");
     static DELEGATION_FIXTURE: OnceLock<serde_json::Value> = OnceLock::new();
