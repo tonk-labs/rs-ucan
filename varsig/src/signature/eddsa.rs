@@ -4,7 +4,7 @@ use crate::{
     curve::Edwards25519,
     hash::{Multihasher, Sha2_512},
     signer::Sign,
-    verify::Verify,
+    verify::{Verify, VarsigHeader},
 };
 
 #[cfg(feature = "edwards25519")]
@@ -375,9 +375,8 @@ impl async_signature::AsyncSigner<Ed25519Signature> for Ed25519SigningKey {
 }
 
 #[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
-impl Verify for Ed25519 {
+impl VarsigHeader for Ed25519 {
     type Signature = Ed25519Signature;
-    type Verifier = Ed25519VerifyingKey;
 
     fn prefix(&self) -> u64 {
         0xed
@@ -394,6 +393,11 @@ impl Verify for Ed25519 {
             None
         }
     }
+}
+
+#[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
+impl Verify for Ed25519 {
+    type Verifier = Ed25519VerifyingKey;
 }
 
 #[cfg(all(feature = "edwards25519", feature = "sha2_512"))]

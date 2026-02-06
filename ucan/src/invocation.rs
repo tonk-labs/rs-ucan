@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::{codec::Codec, verify::Verify};
+use varsig::{codec::Codec, verify::VarsigHeader};
 
 /// Top-level UCAN Invocation.
 ///
@@ -35,7 +35,7 @@ use varsig::{codec::Codec, verify::Verify};
 /// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
 pub struct Invocation<D: Did>(
-    Envelope<D::VarsigConfig, InvocationPayload<D>, <D::VarsigConfig as Verify>::Signature>,
+    Envelope<D::VarsigConfig, InvocationPayload<D>, <D::VarsigConfig as VarsigHeader>::Signature>,
 );
 
 impl<D: Did> Invocation<D> {
@@ -114,10 +114,9 @@ impl<D: Did> Invocation<D> {
         let signature = &self.0 .0;
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
-        let verifier = payload.issuer().verifier();
 
         header
-            .try_verify(&verifier, payload, signature)
+            .verify(payload.issuer(), payload, signature)
             .await
             .map_err(InvocationCheckError::SignatureVerification)?;
 
@@ -142,10 +141,9 @@ impl<D: Did> Invocation<D> {
         let signature = &self.0 .0;
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
-        let verifier = payload.issuer().verifier();
 
         header
-            .try_verify(&verifier, payload, signature)
+            .verify(payload.issuer(), payload, signature)
             .await
             .map_err(SignatureVerificationError)
     }
@@ -168,7 +166,7 @@ impl<D: Did> Serialize for Invocation<D> {
 
 impl<'de, I: Did> Deserialize<'de> for Invocation<I>
 where
-    <I::VarsigConfig as Verify>::Signature: for<'xe> Deserialize<'xe>,
+    <I::VarsigConfig as VarsigHeader>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -522,10 +520,9 @@ mod tests {
         let signature = &invocation.0 .0;
         let header = &invocation.0 .1.header;
         let payload = &invocation.0 .1.payload;
-        let verifier = iss.did().verifier();
 
         // Verify the signature using the varsig header
-        header.try_verify(&verifier, payload, signature).await?;
+        header.verify(payload.issuer(), payload, signature).await?;
 
         Ok(())
     }
@@ -599,17 +596,15 @@ mod tests {
         assert_eq!(invocation1.nonce(), invocation2.nonce());
 
         // Both signatures should verify
-        let verifier = iss.did().verifier();
-
         let sig1 = &invocation1.0 .0;
         let header1 = &invocation1.0 .1.header;
         let payload1 = &invocation1.0 .1.payload;
-        header1.try_verify(&verifier, payload1, sig1).await?;
+        header1.verify(payload1.issuer(), payload1, sig1).await?;
 
         let sig2 = &invocation2.0 .0;
         let header2 = &invocation2.0 .1.header;
         let payload2 = &invocation2.0 .1.payload;
-        header2.try_verify(&verifier, payload2, sig2).await?;
+        header2.verify(payload2.issuer(), payload2, sig2).await?;
 
         // With the same nonce, the signatures should be identical
         // because Ed25519 is deterministic
@@ -655,20 +650,18 @@ mod tests {
         );
 
         // But both should verify with their respective keys
-        let verifier1 = iss1.did().verifier();
         invocation1
             .0
              .1
             .header
-            .try_verify(&verifier1, &invocation1.0 .1.payload, &invocation1.0 .0)
+            .verify(invocation1.0 .1.payload.issuer(), &invocation1.0 .1.payload, &invocation1.0 .0)
             .await?;
 
-        let verifier2 = iss2.did().verifier();
         invocation2
             .0
              .1
             .header
-            .try_verify(&verifier2, &invocation2.0 .1.payload, &invocation2.0 .0)
+            .verify(invocation2.0 .1.payload.issuer(), &invocation2.0 .1.payload, &invocation2.0 .0)
             .await?;
 
         Ok(())
@@ -700,12 +693,11 @@ mod tests {
         assert_eq!(invocation.arguments(), &args);
 
         // Signature should still verify
-        let verifier = iss.did().verifier();
         invocation
             .0
              .1
             .header
-            .try_verify(&verifier, &invocation.0 .1.payload, &invocation.0 .0)
+            .verify(invocation.0 .1.payload.issuer(), &invocation.0 .1.payload, &invocation.0 .0)
             .await?;
 
         Ok(())

@@ -3,7 +3,7 @@
 use crate::{
     codec::Codec,
     signer::{Sign, SignerError},
-    verify::Verify,
+    verify::{Verify, VarsigHeader, VarsigSigner, VarsigVerifier, VerificationError},
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -16,13 +16,13 @@ use serde_ipld_dagjson::codec::DagJsonCodec;
 
 /// Top-level Varsig header type.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct Varsig<V: Verify, C: Codec<T>, T> {
+pub struct Varsig<V: VarsigHeader, C: Codec<T>, T> {
     verifier_cfg: V,
     codec: C,
     _data: PhantomData<T>,
 }
 
-impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
+impl<V: VarsigHeader, C: Codec<T>, T> Varsig<V, C, T> {
     /// Create a new Varsig header.
     ///
     /// ## Parameters
@@ -47,6 +47,70 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
         &self.codec
     }
 
+    /// Sign a payload with the provided signer using the new `VarsigSigner` trait.
+    ///
+    /// The signer's `Signature` type must match this header's `Signature` type.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `VerificationError` if encoding fails, or `signature::Error` if signing fails.
+    pub async fn sign<S: VarsigSigner<Signature = V::Signature>>(
+        &self,
+        signer: &S,
+        payload: &T,
+    ) -> Result<(V::Signature, Vec<u8>), SignError<C::EncodingError>>
+    where
+        C: Codec<T>,
+        T: Serialize,
+    {
+        let mut buffer = Vec::new();
+        self.codec
+            .encode_payload(payload, &mut buffer)
+            .map_err(SignError::EncodingError)?;
+        let sig = signer
+            .sign(&buffer)
+            .await
+            .map_err(SignError::SigningError)?;
+        Ok((sig, buffer))
+    }
+
+    /// Verify a signature with the provided verifier using the new `VarsigVerifier` trait.
+    ///
+    /// The verifier's `Signature` type must match this header's `Signature` type.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `VerificationError` if encoding or verification fails.
+    pub async fn verify<Ver: VarsigVerifier<Signature = V::Signature>>(
+        &self,
+        verifier: &Ver,
+        payload: &T,
+        signature: &V::Signature,
+    ) -> Result<(), VerificationError<C::EncodingError>> {
+        let mut buffer = Vec::new();
+        self.codec
+            .encode_payload(payload, &mut buffer)
+            .map_err(VerificationError::EncodingError)?;
+        verifier
+            .verify(&buffer, signature)
+            .await
+            .map_err(VerificationError::VerificationError)
+    }
+}
+
+/// Error type for signing operations using the new `VarsigSigner` trait.
+#[derive(Debug, thiserror::Error)]
+pub enum SignError<E: std::error::Error> {
+    /// Codec error.
+    #[error(transparent)]
+    EncodingError(E),
+
+    /// Signing error.
+    #[error("Signing error: {0}")]
+    SigningError(signature::Error),
+}
+
+impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
     /// Try to asynchronously sign a payload with the provided signing key.
     ///
     /// # Errors
@@ -84,7 +148,7 @@ impl<V: Verify, C: Codec<T>, T> Varsig<V, C, T> {
 }
 
 #[cfg(feature = "dag_cbor")]
-impl<V: Verify + Default, T> Default for Varsig<V, DagCborCodec, T>
+impl<V: VarsigHeader + Default, T> Default for Varsig<V, DagCborCodec, T>
 where
     DagCborCodec: Codec<T>,
 {
@@ -98,7 +162,7 @@ where
 }
 
 #[cfg(feature = "dag_json")]
-impl<V: Verify + Default, T> Default for Varsig<V, DagJsonCodec, T>
+impl<V: VarsigHeader + Default, T> Default for Varsig<V, DagJsonCodec, T>
 where
     DagJsonCodec: Codec<T>,
 {
@@ -111,7 +175,7 @@ where
     }
 }
 
-impl<V: Verify, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
+impl<V: VarsigHeader, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -158,7 +222,7 @@ impl<V: Verify, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
     }
 }
 
-impl<'de, V: Verify, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
+impl<'de, V: VarsigHeader, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

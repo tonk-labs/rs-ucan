@@ -10,7 +10,7 @@ use crate::signature::eddsa;
 #[cfg(feature = "web_crypto")]
 use crate::signature::rsa;
 #[cfg(feature = "web_crypto")]
-use crate::verify::Verify;
+use crate::verify::{Verify, VarsigHeader};
 #[cfg(feature = "web_crypto")]
 use signature::{SignatureEncoding, Verifier};
 
@@ -149,9 +149,8 @@ impl Verifier<WebCryptoSignature> for WebCryptoVerifier {
 }
 
 #[cfg(feature = "web_crypto")]
-impl Verify for WebCrypto {
+impl VarsigHeader for WebCrypto {
     type Signature = WebCryptoSignature;
-    type Verifier = WebCryptoVerifier;
 
     fn prefix(&self) -> u64 {
         match self {
@@ -200,4 +199,9 @@ impl Verify for WebCrypto {
             _ => None,
         }
     }
+}
+
+#[cfg(feature = "web_crypto")]
+impl Verify for WebCrypto {
+    type Verifier = WebCryptoVerifier;
 }

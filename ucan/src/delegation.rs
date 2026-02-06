@@ -26,12 +26,12 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::verify::Verify;
+use varsig::verify::VarsigHeader;
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
 pub struct Delegation<D: Did>(
-    Envelope<D::VarsigConfig, DelegationPayload<D>, <D::VarsigConfig as Verify>::Signature>,
+    Envelope<D::VarsigConfig, DelegationPayload<D>, <D::VarsigConfig as VarsigHeader>::Signature>,
 );
 
 impl<D: Did> Delegation<D> {
@@ -110,7 +110,7 @@ impl<D: Did> Serialize for Delegation<D> {
 
 impl<'de, I: Did> Deserialize<'de> for Delegation<I>
 where
-    <I::VarsigConfig as Verify>::Signature: for<'ze> Deserialize<'ze>,
+    <I::VarsigConfig as VarsigHeader>::Signature: for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -571,10 +571,9 @@ mod tests {
         let signature = &delegation.0 .0;
         let header = &delegation.0 .1.header;
         let payload = &delegation.0 .1.payload;
-        let verifier = iss.did().verifier();
 
         // Verify the signature using the varsig header
-        header.try_verify(&verifier, payload, signature).await?;
+        header.verify(payload.issuer(), payload, signature).await?;
 
         Ok(())
     }
@@ -628,9 +627,8 @@ mod tests {
         let signature = &delegation.0 .0;
         let header = &delegation.0 .1.header;
         let payload = &delegation.0 .1.payload;
-        let verifier = iss.did().verifier();
 
-        header.try_verify(&verifier, payload, signature).await?;
+        header.verify(payload.issuer(), payload, signature).await?;
 
         Ok(())
     }
@@ -671,17 +669,15 @@ mod tests {
         assert_eq!(delegation1.nonce(), delegation2.nonce());
 
         // Both signatures should verify
-        let verifier = iss.did().verifier();
-
         let sig1 = &delegation1.0 .0;
         let header1 = &delegation1.0 .1.header;
         let payload1 = &delegation1.0 .1.payload;
-        header1.try_verify(&verifier, payload1, sig1).await?;
+        header1.verify(payload1.issuer(), payload1, sig1).await?;
 
         let sig2 = &delegation2.0 .0;
         let header2 = &delegation2.0 .1.header;
         let payload2 = &delegation2.0 .1.payload;
-        header2.try_verify(&verifier, payload2, sig2).await?;
+        header2.verify(payload2.issuer(), payload2, sig2).await?;
 
         // With the same nonce, the signatures should be identical
         // because Ed25519 is deterministic
@@ -724,20 +720,18 @@ mod tests {
         );
 
         // But both should verify with their respective keys
-        let verifier1 = iss1.did().verifier();
         delegation1
             .0
              .1
             .header
-            .try_verify(&verifier1, &delegation1.0 .1.payload, &delegation1.0 .0)
+            .verify(delegation1.0 .1.payload.issuer(), &delegation1.0 .1.payload, &delegation1.0 .0)
             .await?;
 
-        let verifier2 = iss2.did().verifier();
         delegation2
             .0
              .1
             .header
-            .try_verify(&verifier2, &delegation2.0 .1.payload, &delegation2.0 .0)
+            .verify(delegation2.0 .1.payload.issuer(), &delegation2.0 .1.payload, &delegation2.0 .0)
             .await?;
 
         Ok(())

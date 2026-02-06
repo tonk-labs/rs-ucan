@@ -14,8 +14,8 @@ use ipld_core::ipld::Ipld;
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
 use varsig::{
-    signer::{Sign, SignerError},
-    verify::Verify,
+    header::SignError,
+    verify::VarsigHeader,
     Varsig,
 };
 
@@ -272,26 +272,25 @@ pub enum BuildError {
     SigningError(#[from] signature::Error),
 }
 
-impl<Ee: std::error::Error, Ve: std::error::Error> From<SignerError<Ee, Ve>> for BuildError {
-    fn from(e: SignerError<Ee, Ve>) -> Self {
+impl<E: std::error::Error> From<SignError<E>> for BuildError {
+    fn from(e: SignError<E>) -> Self {
         match e {
-            SignerError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
-            SignerError::SigningError(e) => BuildError::SigningError(e),
-            SignerError::VarsigError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::SigningError(e) => BuildError::SigningError(e),
         }
     }
 }
 
 /// Building methods that use async signing.
 ///
-/// This impl block uses async signing via the [`DidSigner`] trait's `signer()` method,
+/// This impl block uses async signing via the [`DidSigner`] trait (which is a `VarsigSigner`),
 /// which works with both native `ed25519_dalek` signers and `WebCrypto` signers.
 #[allow(clippy::mismatching_type_param_order)]
 impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Command> {
     /// Builds the complete, signed [`Delegation`].
     ///
     /// Uses the issuer's signer (set via `.issuer()`) to sign the delegation.
-    /// The signing is performed asynchronously via the `AsyncSign::try_sign_async()` method.
+    /// The signing is performed asynchronously via `VarsigSigner::sign()`.
     ///
     /// # Errors
     ///
@@ -334,16 +333,14 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
 
         let varsig_config = self.issuer.did().varsig_config().clone();
 
-        // Sign the payload
-        let (sig, _encoded) = varsig_config
-            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)
-            .await?;
-
         let header: Varsig<
             <D::Did as Did>::VarsigConfig,
             DagCborCodec,
             super::DelegationPayload<D::Did>,
         > = Varsig::new(varsig_config, DagCborCodec);
+
+        // Sign the payload
+        let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
 
         let payload: EnvelopePayload<
             <D::Did as Did>::VarsigConfig,
@@ -354,7 +351,7 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
         let envelope: Envelope<
             <D::Did as Did>::VarsigConfig,
             super::DelegationPayload<D::Did>,
-            <<D::Did as Did>::VarsigConfig as Verify>::Signature,
+            <<D::Did as Did>::VarsigConfig as VarsigHeader>::Signature,
         > = Envelope(sig, payload);
 
         let delegation: super::Delegation<D::Did> = super::Delegation(envelope);

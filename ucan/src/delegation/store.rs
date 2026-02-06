@@ -17,7 +17,7 @@ use futures::{
 };
 use ipld_core::cid::Cid;
 use thiserror::Error;
-use varsig::verify::Verify;
+use varsig::verify::VarsigHeader;
 
 use crate::{
     did::Did,
@@ -146,7 +146,7 @@ impl<D: Did + Send + Sync, H: BuildHasher + Send> DelegationStore<Sendable, D, A
     for Arc<Mutex<HashMap<Cid, Arc<Delegation<D>>, H>>>
 where
     <D as Did>::VarsigConfig: Send + Sync,
-    <<D as Did>::VarsigConfig as Verify>::Signature: Send + Sync,
+    <<D as Did>::VarsigConfig as VarsigHeader>::Signature: Send + Sync,
 {
     type InsertError = StorePoisoned;
     type GetError = LockedStoreGetError;

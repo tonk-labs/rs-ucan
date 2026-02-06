@@ -3,7 +3,7 @@
 #[cfg(feature = "rsa")]
 use crate::hash::{Multihasher, Sha2_256};
 #[cfg(feature = "rsa")]
-use crate::verify::Verify;
+use crate::verify::{Verify, VarsigHeader};
 #[cfg(feature = "rsa")]
 use std::marker::PhantomData;
 
@@ -21,9 +21,8 @@ pub struct Rsa<const L: usize, H: Multihasher>(PhantomData<H>);
 pub type Rs256<const L: usize> = Rsa<L, Sha2_256>;
 
 #[cfg(feature = "rsa")]
-impl Verify for Rs256<256> {
+impl VarsigHeader for Rs256<256> {
     type Signature = rsa::pkcs1v15::Signature;
-    type Verifier = rsa::pkcs1v15::VerifyingKey<rsa::sha2::Sha256>;
 
     fn prefix(&self) -> u64 {
         0x1205
@@ -43,9 +42,13 @@ impl Verify for Rs256<256> {
 }
 
 #[cfg(feature = "rsa")]
-impl Verify for Rs256<512> {
-    type Signature = rsa::pkcs1v15::Signature;
+impl Verify for Rs256<256> {
     type Verifier = rsa::pkcs1v15::VerifyingKey<rsa::sha2::Sha256>;
+}
+
+#[cfg(feature = "rsa")]
+impl VarsigHeader for Rs256<512> {
+    type Signature = rsa::pkcs1v15::Signature;
 
     fn prefix(&self) -> u64 {
         0x1205
@@ -62,4 +65,9 @@ impl Verify for Rs256<512> {
             None
         }
     }
+}
+
+#[cfg(feature = "rsa")]
+impl Verify for Rs256<512> {
+    type Verifier = rsa::pkcs1v15::VerifyingKey<rsa::sha2::Sha256>;
 }

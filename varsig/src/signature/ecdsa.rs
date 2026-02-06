@@ -7,7 +7,7 @@ use crate::curve::Secp521r1;
 use crate::{
     curve::{Secp256k1, Secp256r1},
     hash::Multihasher,
-    verify::Verify,
+    verify::{Verify, VarsigHeader},
 };
 use std::marker::PhantomData;
 
@@ -35,9 +35,8 @@ impl EcDsaCurve for Secp521r1 {}
 pub type Es256 = EcDsa<Secp256r1, crate::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
-impl Verify for Es256 {
+impl VarsigHeader for Es256 {
     type Signature = p256::ecdsa::Signature;
-    type Verifier = p256::ecdsa::VerifyingKey;
 
     fn prefix(&self) -> u64 {
         0xec
@@ -56,14 +55,18 @@ impl Verify for Es256 {
     }
 }
 
+#[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
+impl Verify for Es256 {
+    type Verifier = p256::ecdsa::VerifyingKey;
+}
+
 /// The ES384 signature algorithm.
 #[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
 pub type Es384 = EcDsa<Secp384r1, crate::hash::Sha2_384>;
 
 #[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
-impl Verify for Es384 {
+impl VarsigHeader for Es384 {
     type Signature = p384::ecdsa::Signature;
-    type Verifier = p384::ecdsa::VerifyingKey;
 
     fn prefix(&self) -> u64 {
         0xec
@@ -80,6 +83,11 @@ impl Verify for Es384 {
             None
         }
     }
+}
+
+#[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
+impl Verify for Es384 {
+    type Verifier = p384::ecdsa::VerifyingKey;
 }
 
 /// The ES512 signature algorithm.
@@ -114,9 +122,8 @@ impl signature::Verifier<p521::ecdsa::Signature> for P521VerifyingKey {
 }
 
 #[cfg(all(feature = "secp521r1", feature = "sha2_512"))]
-impl Verify for Es512 {
+impl VarsigHeader for Es512 {
     type Signature = p521::ecdsa::Signature;
-    type Verifier = P521VerifyingKey;
 
     fn prefix(&self) -> u64 {
         0xec
@@ -135,14 +142,18 @@ impl Verify for Es512 {
     }
 }
 
+#[cfg(all(feature = "secp521r1", feature = "sha2_512"))]
+impl Verify for Es512 {
+    type Verifier = P521VerifyingKey;
+}
+
 /// The ES256K signature algorithm.
 #[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
 pub type Es256k = EcDsa<Secp256k1, crate::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
-impl Verify for Es256k {
+impl VarsigHeader for Es256k {
     type Signature = k256::ecdsa::Signature;
-    type Verifier = k256::ecdsa::VerifyingKey;
 
     fn prefix(&self) -> u64 {
         0xec
@@ -159,4 +170,9 @@ impl Verify for Es256k {
             None
         }
     }
+}
+
+#[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
+impl Verify for Es256k {
+    type Verifier = k256::ecdsa::VerifyingKey;
 }

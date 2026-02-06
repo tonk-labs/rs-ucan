@@ -18,11 +18,11 @@ rust-version.workspace = true
 
 [dependencies]
 arbitrary = { workspace = true, optional = true }
-async-signature = "0.5.1"
-base58 = "0.2.0"
-ed25519-dalek = "2.2"
+async-signature = { version = "0.5.1", optional = true }
+base58 = { version = "0.2.0", optional = true }
+ed25519-dalek = { version = "2.2", optional = true }
 futures = { workspace = true }
-getrandom.workspace = true
+getrandom = { workspace = true, optional = true }
 ipld-core.workspace = true
 leb128 = "0.2.5"
 nom-unicode.workspace = true
@@ -41,19 +41,19 @@ tracing.workspace = true
 varsig = { path = "../varsig" }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2.9", features = ["js"] }
+getrandom = { version = "0.2.9", features = ["js"], optional = true }
 # getrandom 0.3 is pulled in transitively by proptest → rand 0.9.
 # It needs the wasm_js feature to compile for wasm32-unknown-unknown.
 getrandom_0_3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
-js-sys = "0.3"
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", features = [
     "Crypto",
     "SubtleCrypto",
     "CryptoKey",
     "CryptoKeyPair",
-] }
+], optional = true }
 web-time = "1.1"
 
 [dev-dependencies]
@@ -70,6 +70,22 @@ tokio = { version = "1", features = ["rt", "macros"] }
 wasm-bindgen-test = "0.3"
 
 [features]
+default = ["ed25519"]
+ed25519 = [
+    "dep:ed25519-dalek",
+    "dep:getrandom",
+    "dep:base58",
+    "dep:async-signature",
+    "varsig/edwards25519",
+    "varsig/sha2_512",
+]
+wasm_ed25519 = [
+    "ed25519",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
+    "dep:web-sys",
+]
 test_utils = ["arb", "property_test"]
 arb = ["dep:arbitrary"]
 property_test = ["dep:proptest", "dep:proptest-arbitrary-interop"]
