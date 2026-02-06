@@ -261,14 +261,14 @@ pub struct Ed25519Signer {
     signer: Ed25519SigningKey,
 }
 
-impl Ed25519Signer {
-    /// Build an `Ed25519Signer` from an already-constructed `Ed25519SigningKey`.
-    #[must_use]
-    fn from_signing_key(signer: Ed25519SigningKey) -> Self {
+impl From<Ed25519SigningKey> for Ed25519Signer {
+    fn from(signer: Ed25519SigningKey) -> Self {
         let did = Ed25519Did::from(signer.verifying_key());
         Self { did, signer }
     }
+}
 
+impl Ed25519Signer {
     /// Generate a new Ed25519 keypair.
     ///
     /// On WASM, uses the `WebCrypto` API (non-extractable key by default).
@@ -278,22 +278,8 @@ impl Ed25519Signer {
     ///
     /// On WASM, returns an error if key generation fails or the browser
     /// doesn't support Ed25519. On native, returns an error if the RNG fails.
-    #[allow(clippy::unused_async)] // async is needed on WASM
     pub async fn generate() -> Result<Self, Ed25519SignerError> {
-        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-        let signing_key = {
-            use varsig::signature::eddsa::web;
-            web::SigningKey::generate().await?
-        };
-
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        let signing_key = {
-            let mut seed = [0u8; 32];
-            getrandom::getrandom(&mut seed)?;
-            ed25519_dalek::SigningKey::from_bytes(&seed)
-        };
-
-        Ok(Self::from_signing_key(Ed25519SigningKey::from(signing_key)))
+        Ok(Ed25519SigningKey::generate().await?.into())
     }
 
     /// Import a keypair from a [`KeyExport`].
@@ -305,7 +291,7 @@ impl Ed25519Signer {
     /// Returns an error if the seed has the wrong length or the `WebCrypto` import fails.
     pub async fn import(key: impl Into<KeyExport>) -> Result<Self, Ed25519SignerError> {
         let signing_key = Ed25519SigningKey::import(key).await?;
-        Ok(Self::from_signing_key(signing_key))
+        Ok(signing_key.into())
     }
 
     /// Export the key material.
@@ -332,14 +318,14 @@ impl Ed25519Signer {
 
 impl From<ed25519_dalek::SigningKey> for Ed25519Signer {
     fn from(key: ed25519_dalek::SigningKey) -> Self {
-        Self::from_signing_key(Ed25519SigningKey::from(key))
+        Ed25519SigningKey::from(key).into()
     }
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 impl From<varsig::signature::eddsa::web::SigningKey> for Ed25519Signer {
     fn from(key: varsig::signature::eddsa::web::SigningKey) -> Self {
-        Self::from_signing_key(Ed25519SigningKey::from(key))
+        Ed25519SigningKey::from(key).into()
     }
 }
 
@@ -348,13 +334,13 @@ impl ExtractableCryptoKey for Ed25519Signer {
     async fn generate() -> Result<Self, WebCryptoError> {
         use varsig::signature::eddsa::web;
         let key = <web::SigningKey as ExtractableCryptoKey>::generate().await?;
-        Ok(Self::from_signing_key(Ed25519SigningKey::from(key)))
+        Ok(Ed25519SigningKey::from(key).into())
     }
 
     async fn import(key: impl Into<KeyExport>) -> Result<Self, WebCryptoError> {
         use varsig::signature::eddsa::web;
         let key = <web::SigningKey as ExtractableCryptoKey>::import(key).await?;
-        Ok(Self::from_signing_key(Ed25519SigningKey::from(key)))
+        Ok(Ed25519SigningKey::from(key).into())
     }
 
     async fn export(&self) -> Result<KeyExport, WebCryptoError> {

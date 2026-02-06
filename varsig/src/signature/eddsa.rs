@@ -213,6 +213,10 @@ pub enum Ed25519KeyError {
     /// The seed bytes have the wrong length (expected 32).
     InvalidSeedLength(usize),
 
+    /// Random number generation failed (native only).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    Rng(getrandom::Error),
+
     /// WebCrypto operation failed (WASM only).
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     WebCrypto(web::WebCryptoError),
@@ -223,6 +227,8 @@ impl std::fmt::Display for Ed25519KeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidSeedLength(n) => write!(f, "expected 32 seed bytes, got {n}"),
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            Self::Rng(e) => write!(f, "RNG error: {e}"),
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             Self::WebCrypto(e) => write!(f, "{e}"),
         }
@@ -252,6 +258,30 @@ impl Ed25519SigningKey {
             Self::Native(key) => Ed25519VerifyingKey::Native(key.verifying_key()),
             #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
             Self::WebCrypto(key) => Ed25519VerifyingKey::WebCrypto(key.verifying_key()),
+        }
+    }
+
+    /// Generate a new Ed25519 signing key.
+    ///
+    /// On WASM, uses the `WebCrypto` API (non-extractable key by default).
+    /// On native, uses `ed25519_dalek` with random bytes from `getrandom`.
+    ///
+    /// # Errors
+    ///
+    /// On WASM, returns an error if key generation fails or the browser
+    /// doesn't support Ed25519. On native, returns an error if the RNG fails.
+    #[allow(clippy::unused_async)]
+    pub async fn generate() -> Result<Self, Ed25519KeyError> {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            Ok(Self::WebCrypto(web::SigningKey::generate().await?))
+        }
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let mut seed = [0u8; 32];
+            getrandom::getrandom(&mut seed).map_err(Ed25519KeyError::Rng)?;
+            Ok(Self::Native(ed25519_dalek::SigningKey::from_bytes(&seed)))
         }
     }
 
