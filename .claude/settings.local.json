@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo doc:*)",
+      "Bash(cargo search:*)",
+      "Bash(cargo test:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo tree:*)",
+      "Bash(find:*)",
+      "Bash(cargo +nightly fmt:*)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan log --oneline -5)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan diff 4dc7fe9..48bd19a --stat -- '*.rs')",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan show 4dc7fe9:ucan/src/delegation.rs)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan show 4dc7fe9:ucan/src/invocation.rs)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan show 4dc7fe9:ucan/src/delegation/subject.rs)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan show 4dc7fe9:ucan/tests/delegation_conformance.rs)",
+      "Bash(rustup target list:*)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan diff --stat)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan diff)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan log --oneline -10)",
+      "Bash(gh run list:*)",
+      "Bash(gh pr list:*)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan remote:*)",
+      "Bash(gh run view:*)",
+      "Bash(python3:*)",
+      "Bash(git -C /Users/gozala/Projects/rs-ucan show:*)",
+      "Bash(rustup toolchain list:*)",
+      "Bash(cargo +1.85 clippy:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,11 +1,9 @@
-//! Varsig signature — header type, signing/verification traits, and error types.
+//! Varsig signature — header type, signing/verification traits, and encoding.
 
-pub mod error;
 pub mod signer;
 pub mod verifier;
 
 use super::{Codec, SignatureAlgorithm};
-pub use error::{SignError, VerificationError};
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
 use std::marker::PhantomData;
@@ -53,55 +51,19 @@ impl<V: SignatureAlgorithm, C: Codec<T>, T> Varsig<V, C, T> {
         &self.codec
     }
 
-    /// Sign a payload with the provided signer.
-    ///
-    /// The signer's `Algorithm` type must match algorithm of this configuration.
+    /// Encode a payload using this header's codec.
     ///
     /// # Errors
     ///
-    /// Returns a `SignError` if encoding fails, or `signature::Error` if signing fails.
-    pub async fn sign<S: Signer<Algorithm = V>>(
-        &self,
-        signer: &S,
-        payload: &T,
-    ) -> Result<(V::Signature, Vec<u8>), SignError<C::EncodingError>>
+    /// Returns the codec's encoding error if encoding fails.
+    pub fn encode(&self, payload: &T) -> Result<Vec<u8>, C::EncodingError>
     where
         C: Codec<T>,
         T: Serialize,
     {
         let mut buffer = Vec::new();
-        self.codec
-            .encode_payload(payload, &mut buffer)
-            .map_err(SignError::EncodingError)?;
-        let sig = signer
-            .sign(&buffer)
-            .await
-            .map_err(SignError::SigningError)?;
-        Ok((sig, buffer))
-    }
-
-    /// Verify a signature with the provided verifier.
-    ///
-    /// The verifier's `Algorithm` type must match the signature algorithm of
-    /// this configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `VerificationError` if encoding or verification fails.
-    pub async fn verify<Ver: Verifier<Algorithm = V>>(
-        &self,
-        verifier: &Ver,
-        payload: &T,
-        signature: &V::Signature,
-    ) -> Result<(), VerificationError<C::EncodingError>> {
-        let mut buffer = Vec::new();
-        self.codec
-            .encode_payload(payload, &mut buffer)
-            .map_err(VerificationError::EncodingError)?;
-        verifier
-            .verify(&buffer, signature)
-            .await
-            .map_err(VerificationError::VerificationError)
+        self.codec.encode_payload(payload, &mut buffer)?;
+        Ok(buffer)
     }
 }
 
@@ -375,8 +337,9 @@ mod tests {
         let vk = TestVerifier(dalek_sk.verifying_key());
         let varsig: Varsig<Ed25519, TestCodec, TestPayload> = Varsig::new(TestCodec);
 
-        let (sig, _encoded) = varsig.sign(&sk, &payload).await?;
-        varsig.verify(&vk, &payload, &sig).await?;
+        let encoded = varsig.encode(&payload)?;
+        let sig = sk.sign(&encoded).await?;
+        vk.verify(&encoded, &sig).await?;
 
         Ok(())
     }

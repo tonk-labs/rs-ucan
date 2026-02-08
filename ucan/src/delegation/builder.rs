@@ -13,7 +13,7 @@ use crate::{
 };
 use ipld_core::ipld::Ipld;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{SignError, SignatureAlgorithm, Varsig, Verifier};
+use varsig::{SignatureAlgorithm, Varsig, Verifier};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
@@ -271,15 +271,6 @@ pub enum BuildError {
     SigningError(#[from] signature::Error),
 }
 
-impl<E: std::error::Error> From<SignError<E>> for BuildError {
-    fn from(e: SignError<E>) -> Self {
-        match e {
-            SignError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
-            SignError::SigningError(e) => BuildError::SigningError(e),
-        }
-    }
-}
-
 /// Building methods that use async signing.
 ///
 /// This impl block uses async signing via the [`Issuer`] trait (which is a `Signer`),
@@ -336,8 +327,15 @@ impl<D: Issuer> DelegationBuilder<D, D, D::Principal, DelegatedSubject<D::Princi
             super::DelegationPayload<D::Principal>,
         > = Varsig::new(CborCodec);
 
-        // Sign the payload
-        let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
+        // Encode and sign the payload
+        let encoded = header
+            .encode(&payload)
+            .map_err(|e| BuildError::EncodingError(e.to_string()))?;
+        let sig = self
+            .issuer
+            .sign(&encoded)
+            .await
+            .map_err(BuildError::SigningError)?;
 
         let payload: EnvelopePayload<
             <D::Principal as Verifier>::Algorithm,
