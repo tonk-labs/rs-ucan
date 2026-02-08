@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "ucan",
+    "ucan-credentials",
     "ucan_wasm",
     "varsig"
 ]
@@ -14,7 +15,6 @@ rust-version = "1.85.0"
 
 [workspace.dependencies]
 arbitrary = { version = "1.4", features = ["derive"] }
-async-signature = "0.5.1"
 ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
 env_logger = "0.11.8"
 futures = "0.3.31"
@@ -64,6 +64,7 @@ todo = "warn"
 unneeded_field_pattern = "warn"
 unwrap_used = "warn"
 wildcard_enum_match_arm = "warn"
+multiple_crate_versions = "allow" # getrandom v0.2/v0.3 coexist via transitive deps
 
 all = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }

@@ -4,7 +4,8 @@ mod delegation_conformance {
 
     use base64::prelude::*;
     use testresult::TestResult;
-    use ucan::{did::Ed25519Did, Delegation};
+    use ucan::Delegation;
+    use ucan_credentials::ed25519::Ed25519Did;
 
     const DELEGATION_FIXTURE_STR: &str = include_str!("./fixtures/delegation.json");
     static DELEGATION_FIXTURE: OnceLock<serde_json::Value> = OnceLock::new();
@@ -33,7 +34,7 @@ mod delegation_conformance {
             .expect("valid delegation token is a string");
 
         let bytes: Vec<u8> = BASE64_STANDARD.decode(b64_txt)?;
-        let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?; //
+        let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
         assert_eq!(delegation.policy(), &vec![]);
 
         Ok(())

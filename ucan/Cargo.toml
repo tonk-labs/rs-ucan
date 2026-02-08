@@ -18,9 +18,6 @@ rust-version.workspace = true
 
 [dependencies]
 arbitrary = { workspace = true, optional = true }
-async-signature = "0.5.1"
-base58 = "0.2.0"
-ed25519-dalek = "2.2"
 futures = { workspace = true }
 getrandom.workspace = true
 ipld-core.workspace = true
@@ -39,6 +36,7 @@ signature.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 varsig = { path = "../varsig" }
+web-time = "1.1"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2.9", features = ["js"] }
@@ -47,29 +45,20 @@ getrandom = { version = "0.2.9", features = ["js"] }
 getrandom_0_3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = [
-    "Crypto",
-    "SubtleCrypto",
-    "CryptoKey",
-    "CryptoKeyPair",
-] }
-web-time = "1.1"
 
 [dev-dependencies]
 arbitrary = { workspace = true, optional = false }
-base64 = "0.22.1"
 pretty_assertions.workspace = true
 serde_json = "1.0"
 serde_ipld_dagjson.workspace = true
 test-log.workspace = true
 testresult.workspace = true
-tokio = { version = "1", features = ["rt", "macros"] }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [features]
+default = []
 test_utils = ["arb", "property_test"]
 arb = ["dep:arbitrary"]
 property_test = ["dep:proptest", "dep:proptest-arbitrary-interop"]

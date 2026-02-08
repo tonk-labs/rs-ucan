@@ -14,7 +14,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-async-signature.workspace = true
 bytes = { version =  "1.10", optional = true }
 ed25519-dalek = { workspace = true, optional = true }
 ipld-core.workspace = true
@@ -33,14 +32,6 @@ signature.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-# WASM dependencies - getrandom needs js feature for wasm32-unknown-unknown
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
-js-sys = "0.3"
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Crypto", "SubtleCrypto", "CryptoKey", "CryptoKeyPair"] }
-
 [dev-dependencies]
 rand = "0.8.5"
 testresult = "0.4.1"
@@ -49,7 +40,6 @@ tokio-test = "0.4"
 
 [features]
 default = ["dag_cbor", "es256", "es256k", "ed25519"]
-web_crypto = ["rs256_2048", "rs256_4096", "es256", "es384", "es512", "ed25519"]
 common = ["es256", "es256k", "ed25519"]
 
 identity = []

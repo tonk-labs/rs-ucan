@@ -1,0 +1,66 @@
+[package]
+name = "ucan-credentials"
+description = "Concrete key types for UCAN authentication"
+version = "0.1.0"
+authors = [
+    "Brooklyn Zelenka <hello@brooklynzelenka.com>",
+    "Irakli Gozalishvili <contact@gozala.io>",
+]
+
+readme = "README.md"
+keywords = ["ucan", "did", "ed25519", "crypto"]
+categories = ["cryptography", "authentication"]
+
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base58 = { version = "0.2.0", optional = true }
+ed25519-dalek = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+serde.workspace = true
+serde_bytes = "0.11.19"
+signature.workspace = true
+thiserror.workspace = true
+ucan = { path = "../ucan" }
+varsig = { path = "../varsig" }
+
+# WASM dependencies (always available on wasm32-unknown-unknown)
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Crypto",
+    "SubtleCrypto",
+    "CryptoKey",
+    "CryptoKeyPair",
+] }
+
+[dev-dependencies]
+base64 = "0.22.1"
+ed25519-dalek.workspace = true
+ipld-core.workspace = true
+rand = "0.8.5"
+serde_ipld_dagcbor.workspace = true
+serde_json = "1.0"
+testresult = "0.4.1"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[features]
+default = ["ed25519"]
+ed25519 = [
+    "dep:ed25519-dalek",
+    "dep:getrandom",
+    "dep:base58",
+    "varsig/edwards25519",
+    "varsig/sha2_512",
+]
+[lints]
+workspace = true

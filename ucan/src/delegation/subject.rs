@@ -1,6 +1,6 @@
 //! Subject of a delegation
 
-use crate::did::Did;
+use crate::principal::Principal;
 use serde::{de::Deserialize, ser::Serializer, Serialize};
 use std::fmt::Display;
 
@@ -14,7 +14,7 @@ use std::fmt::Display;
 /// Since it is so powerful, only use `Any` directly if you know
 /// what you're doing.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
-pub enum DelegatedSubject<D: Did> {
+pub enum DelegatedSubject<D: Principal> {
     /// A specific subject (recommended)
     Specific(D),
 
@@ -22,7 +22,7 @@ pub enum DelegatedSubject<D: Did> {
     Any,
 }
 
-impl<D: Did> DelegatedSubject<D> {
+impl<D: Principal> DelegatedSubject<D> {
     /// Check that the [`DelegatedSubject`] either matches the subject, or is `Any`.
     pub fn allows(&self, subject: &D) -> bool {
         match self {
@@ -42,13 +42,13 @@ impl<D: Did> DelegatedSubject<D> {
     }
 }
 
-impl<D: Did> From<D> for DelegatedSubject<D> {
+impl<D: Principal> From<D> for DelegatedSubject<D> {
     fn from(subject: D) -> Self {
         DelegatedSubject::Specific(subject)
     }
 }
 
-impl<D: Did + Display> Display for DelegatedSubject<D> {
+impl<D: Principal + Display> Display for DelegatedSubject<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DelegatedSubject::Specific(did) => Display::fmt(did, f),
@@ -57,7 +57,7 @@ impl<D: Did + Display> Display for DelegatedSubject<D> {
     }
 }
 
-impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
+impl<D: Principal + Serialize> Serialize for DelegatedSubject<D> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             DelegatedSubject::Specific(did) => did.serialize(serializer),
@@ -66,7 +66,7 @@ impl<D: Did + Serialize> Serialize for DelegatedSubject<D> {
     }
 }
 
-impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
+impl<'de, I: Principal> Deserialize<'de> for DelegatedSubject<I> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = serde_value::Value::deserialize(deserializer)?;
 
@@ -79,52 +79,5 @@ impl<'de, I: Did> Deserialize<'de> for DelegatedSubject<I> {
         }
 
         Err(serde::de::Error::custom("invalid subject format"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::did::Ed25519Did;
-    use serde_ipld_dagcbor::{from_slice, to_vec};
-
-    #[test]
-    fn any_serializes_to_null() {
-        let subject: DelegatedSubject<Ed25519Did> = DelegatedSubject::Any;
-        let bytes = to_vec(&subject).unwrap();
-        // CBOR null is encoded as 0xf6
-        assert_eq!(bytes, vec![0xf6]);
-    }
-
-    #[test]
-    fn any_deserializes_from_null() {
-        // CBOR null is encoded as 0xf6
-        let bytes = vec![0xf6];
-        let subject: DelegatedSubject<Ed25519Did> = from_slice(&bytes).unwrap();
-        assert_eq!(subject, DelegatedSubject::Any);
-    }
-
-    #[test]
-    fn any_roundtrip() {
-        let subject: DelegatedSubject<Ed25519Did> = DelegatedSubject::Any;
-        let bytes = to_vec(&subject).unwrap();
-        let decoded: DelegatedSubject<Ed25519Did> = from_slice(&bytes).unwrap();
-        assert_eq!(decoded, DelegatedSubject::Any);
-    }
-
-    #[test]
-    fn specific_roundtrip() {
-        let key = ed25519_dalek::VerifyingKey::from_bytes(&[
-            215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114,
-            243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26,
-        ])
-        .unwrap();
-        let did: Ed25519Did = key.into();
-        let subject = DelegatedSubject::Specific(did.clone());
-
-        let bytes = to_vec(&subject).unwrap();
-        let decoded: DelegatedSubject<Ed25519Did> = from_slice(&bytes).unwrap();
-
-        assert_eq!(decoded, DelegatedSubject::Specific(did));
     }
 }

@@ -4,32 +4,29 @@ use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
     command::Command,
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
     envelope::{Envelope, EnvelopePayload},
-    sealed::{CommandOrUnset, DelegatedSubjectOrUnset, DidOrUnset, DidSignerOrUnset},
+    issuer::Issuer,
+    principal::Principal,
+    sealed::{CommandOrUnset, DelegatedSubjectOrUnset, IssuerOrUnset, PrincipalOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::ipld::Ipld;
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{
-    signer::{Sign, SignerError},
-    verify::Verify,
-    Varsig,
-};
+use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
 pub struct DelegationBuilder<
-    D: DidSigner,
-    Issuer: DidSignerOrUnset = Unset,
-    Audience: DidOrUnset = Unset,
+    D: Issuer,
+    Iss: IssuerOrUnset = Unset,
+    Audience: PrincipalOrUnset = Unset,
     Subject: DelegatedSubjectOrUnset = Unset,
     Cmd: CommandOrUnset = Unset,
 > {
     /// Issuer of the delegation.
-    pub issuer: Issuer,
+    pub issuer: Iss,
 
     /// Audience of the delegation.
     pub audience: Audience,
@@ -60,7 +57,7 @@ pub struct DelegationBuilder<
     _did: PhantomData<D>,
 }
 
-impl<D: DidSigner> DelegationBuilder<D> {
+impl<D: Issuer> DelegationBuilder<D> {
     /// Creates a blank [`DelegationBuilder`] instance.
     #[must_use]
     pub const fn new() -> Self {
@@ -81,12 +78,12 @@ impl<D: DidSigner> DelegationBuilder<D> {
 
 #[allow(private_bounds)]
 impl<
-        D: DidSigner,
-        Issuer: DidSignerOrUnset,
-        Audience: DidOrUnset,
+        D: Issuer,
+        Iss: IssuerOrUnset,
+        Audience: PrincipalOrUnset,
         Subject: DelegatedSubjectOrUnset,
         Cmd: CommandOrUnset,
-    > DelegationBuilder<D, Issuer, Audience, Subject, Cmd>
+    > DelegationBuilder<D, Iss, Audience, Subject, Cmd>
 {
     /// Sets the `issuer` field of the delegation.
     #[must_use]
@@ -107,7 +104,10 @@ impl<
 
     /// Sets the `audience` field of the delegation.
     #[must_use]
-    pub fn audience(self, audience: D::Did) -> DelegationBuilder<D, Issuer, D::Did, Subject, Cmd> {
+    pub fn audience(
+        self,
+        audience: D::Principal,
+    ) -> DelegationBuilder<D, Iss, D::Principal, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience,
@@ -126,8 +126,8 @@ impl<
     #[must_use]
     pub fn subject(
         self,
-        subject: DelegatedSubject<D::Did>,
-    ) -> DelegationBuilder<D, Issuer, Audience, DelegatedSubject<D::Did>, Cmd> {
+        subject: DelegatedSubject<D::Principal>,
+    ) -> DelegationBuilder<D, Iss, Audience, DelegatedSubject<D::Principal>, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -147,7 +147,7 @@ impl<
     pub fn command(
         self,
         command: Vec<String>,
-    ) -> DelegationBuilder<D, Issuer, Audience, Subject, Command> {
+    ) -> DelegationBuilder<D, Iss, Audience, Subject, Command> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -167,7 +167,7 @@ impl<
     pub fn policy(
         self,
         policy: Vec<Predicate>,
-    ) -> DelegationBuilder<D, Issuer, Audience, Subject, Cmd> {
+    ) -> DelegationBuilder<D, Iss, Audience, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -187,7 +187,7 @@ impl<
     pub fn expiration(
         self,
         expiration: Timestamp,
-    ) -> DelegationBuilder<D, Issuer, Audience, Subject, Cmd> {
+    ) -> DelegationBuilder<D, Iss, Audience, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -207,7 +207,7 @@ impl<
     pub fn not_before(
         self,
         not_before: Timestamp,
-    ) -> DelegationBuilder<D, Issuer, Audience, Subject, Cmd> {
+    ) -> DelegationBuilder<D, Iss, Audience, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -227,7 +227,7 @@ impl<
     pub fn meta(
         self,
         meta: BTreeMap<String, Ipld>,
-    ) -> DelegationBuilder<D, Issuer, Audience, Subject, Cmd> {
+    ) -> DelegationBuilder<D, Iss, Audience, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -244,7 +244,7 @@ impl<
 
     /// Sets the `nonce` field of the delegation.
     #[must_use]
-    pub fn nonce(self, nonce: Nonce) -> DelegationBuilder<D, Issuer, Audience, Subject, Cmd> {
+    pub fn nonce(self, nonce: Nonce) -> DelegationBuilder<D, Iss, Audience, Subject, Cmd> {
         DelegationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -272,26 +272,25 @@ pub enum BuildError {
     SigningError(#[from] signature::Error),
 }
 
-impl<Ee: std::error::Error, Ve: std::error::Error> From<SignerError<Ee, Ve>> for BuildError {
-    fn from(e: SignerError<Ee, Ve>) -> Self {
+impl<E: std::error::Error> From<SignError<E>> for BuildError {
+    fn from(e: SignError<E>) -> Self {
         match e {
-            SignerError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
-            SignerError::SigningError(e) => BuildError::SigningError(e),
-            SignerError::VarsigError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::SigningError(e) => BuildError::SigningError(e),
         }
     }
 }
 
 /// Building methods that use async signing.
 ///
-/// This impl block uses async signing via the [`DidSigner`] trait's `signer()` method,
+/// This impl block uses async signing via the [`Issuer`] trait (which is a `Signer`),
 /// which works with both native `ed25519_dalek` signers and `WebCrypto` signers.
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Command> {
+impl<D: Issuer> DelegationBuilder<D, D, D::Principal, DelegatedSubject<D::Principal>, Command> {
     /// Builds the complete, signed [`Delegation`].
     ///
     /// Uses the issuer's signer (set via `.issuer()`) to sign the delegation.
-    /// The signing is performed asynchronously via the `AsyncSign::try_sign_async()` method.
+    /// The signing is performed asynchronously via `Signer::sign()`.
     ///
     /// # Errors
     ///
@@ -317,9 +316,9 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
     ///     .await?;
     /// ```
     #[allow(clippy::expect_used)]
-    pub async fn try_build(self) -> Result<super::Delegation<D::Did>, BuildError> {
-        let payload: super::DelegationPayload<D::Did> = super::DelegationPayload {
-            issuer: self.issuer.did().clone(),
+    pub async fn try_build(self) -> Result<super::Delegation<D::Principal>, BuildError> {
+        let payload: super::DelegationPayload<D::Principal> = super::DelegationPayload {
+            issuer: self.issuer.principal().clone(),
             audience: self.audience,
             subject: self.subject,
             command: self.command,
@@ -332,32 +331,28 @@ impl<D: DidSigner> DelegationBuilder<D, D, D::Did, DelegatedSubject<D::Did>, Com
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        let varsig_config = self.issuer.did().varsig_config().clone();
+        let header: Varsig<
+            <D::Principal as Principal>::Algorithm,
+            DagCborCodec,
+            super::DelegationPayload<D::Principal>,
+        > = Varsig::new(DagCborCodec);
 
         // Sign the payload
-        let (sig, _encoded) = varsig_config
-            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)
-            .await?;
-
-        let header: Varsig<
-            <D::Did as Did>::VarsigConfig,
-            DagCborCodec,
-            super::DelegationPayload<D::Did>,
-        > = Varsig::new(varsig_config, DagCborCodec);
+        let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
 
         let payload: EnvelopePayload<
-            <D::Did as Did>::VarsigConfig,
-            super::DelegationPayload<D::Did>,
+            <D::Principal as Principal>::Algorithm,
+            super::DelegationPayload<D::Principal>,
         > = EnvelopePayload { header, payload };
 
         #[allow(clippy::type_complexity)]
         let envelope: Envelope<
-            <D::Did as Did>::VarsigConfig,
-            super::DelegationPayload<D::Did>,
-            <<D::Did as Did>::VarsigConfig as Verify>::Signature,
+            <D::Principal as Principal>::Algorithm,
+            super::DelegationPayload<D::Principal>,
+            <<D::Principal as Principal>::Algorithm as SignatureAlgorithm>::Signature,
         > = Envelope(sig, payload);
 
-        let delegation: super::Delegation<D::Did> = super::Delegation(envelope);
+        let delegation: super::Delegation<D::Principal> = super::Delegation(envelope);
 
         Ok(delegation)
     }

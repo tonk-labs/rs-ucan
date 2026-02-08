@@ -3,35 +3,32 @@
 use crate::{
     command::Command,
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
     envelope::{Envelope, EnvelopePayload},
+    issuer::Issuer,
+    principal::Principal,
     promise::Promised,
-    sealed::{CommandOrUnset, DidOrUnset, DidSignerOrUnset, ProofsOrUnset},
+    sealed::{CommandOrUnset, IssuerOrUnset, PrincipalOrUnset, ProofsOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{
-    signer::{Sign, SignerError},
-    verify::Verify,
-    Varsig,
-};
+use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
 
-/// Typesafe builder for [`Delegation`].
+/// Typesafe builder for [`Invocation`].
 #[allow(private_bounds)]
 #[derive(Default, Debug, Clone)]
 pub struct InvocationBuilder<
-    D: DidSigner,
-    Issuer: DidSignerOrUnset = Unset,
-    Audience: DidOrUnset = Unset,
-    Subject: DidOrUnset = Unset,
+    D: Issuer,
+    Iss: IssuerOrUnset = Unset,
+    Audience: PrincipalOrUnset = Unset,
+    Subject: PrincipalOrUnset = Unset,
     Cmd: CommandOrUnset = Unset,
     Proofs: ProofsOrUnset = Unset,
 > {
     /// Issuer of the invocation.
-    pub issuer: Issuer,
+    pub issuer: Iss,
 
     /// Audience of the invocation.
     pub audience: Audience,
@@ -66,7 +63,7 @@ pub struct InvocationBuilder<
     _did: PhantomData<D>,
 }
 
-impl<D: DidSigner> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
+impl<D: Issuer> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
     /// Creates a blank [`InvocationBuilder`] instance.
     #[must_use]
     pub const fn new() -> Self {
@@ -89,13 +86,13 @@ impl<D: DidSigner> InvocationBuilder<D, Unset, Unset, Unset, Unset, Unset> {
 
 #[allow(private_bounds)]
 impl<
-        D: DidSigner,
-        Issuer: DidSignerOrUnset,
-        Audience: DidOrUnset,
-        Subject: DidOrUnset,
+        D: Issuer,
+        Iss: IssuerOrUnset,
+        Audience: PrincipalOrUnset,
+        Subject: PrincipalOrUnset,
         Cmd: CommandOrUnset,
         Proofs: ProofsOrUnset,
-    > InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs>
+    > InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs>
 {
     /// Sets the `issuer` field of the invocation.
     #[must_use]
@@ -120,8 +117,8 @@ impl<
     #[must_use]
     pub fn audience(
         self,
-        audience: D::Did,
-    ) -> InvocationBuilder<D, Issuer, D::Did, Subject, Cmd, Proofs> {
+        audience: D::Principal,
+    ) -> InvocationBuilder<D, Iss, D::Principal, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience,
@@ -142,8 +139,8 @@ impl<
     #[must_use]
     pub fn subject(
         self,
-        subject: D::Did,
-    ) -> InvocationBuilder<D, Issuer, Audience, D::Did, Cmd, Proofs> {
+        subject: D::Principal,
+    ) -> InvocationBuilder<D, Iss, Audience, D::Principal, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -165,7 +162,7 @@ impl<
     pub fn command(
         self,
         command: Vec<String>,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Command, Proofs> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Command, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -187,7 +184,7 @@ impl<
     pub fn arguments(
         self,
         arguments: BTreeMap<String, Promised>,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -209,7 +206,7 @@ impl<
     pub fn proofs(
         self,
         proofs: Vec<Cid>,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Vec<Cid>> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Vec<Cid>> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -231,7 +228,7 @@ impl<
     pub fn expiration(
         self,
         expiration: Timestamp,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -253,7 +250,7 @@ impl<
     pub fn issued_at(
         self,
         issued_at: Timestamp,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -272,7 +269,7 @@ impl<
 
     /// Sets the `issued_at` field of the invocation to the current system time.
     #[must_use]
-    pub fn issue_now(self) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    pub fn issue_now(self) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -294,7 +291,7 @@ impl<
     pub fn meta(
         self,
         meta: BTreeMap<String, Ipld>,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    ) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -313,10 +310,7 @@ impl<
 
     /// Sets the `nonce` field of the invocation.
     #[must_use]
-    pub fn nonce(
-        self,
-        nonce: Nonce,
-    ) -> InvocationBuilder<D, Issuer, Audience, Subject, Cmd, Proofs> {
+    pub fn nonce(self, nonce: Nonce) -> InvocationBuilder<D, Iss, Audience, Subject, Cmd, Proofs> {
         InvocationBuilder {
             issuer: self.issuer,
             audience: self.audience,
@@ -346,26 +340,25 @@ pub enum BuildError {
     SigningError(#[from] signature::Error),
 }
 
-impl<Ee: std::error::Error, Ve: std::error::Error> From<SignerError<Ee, Ve>> for BuildError {
-    fn from(e: SignerError<Ee, Ve>) -> Self {
+impl<E: std::error::Error> From<SignError<E>> for BuildError {
+    fn from(e: SignError<E>) -> Self {
         match e {
-            SignerError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
-            SignerError::SigningError(e) => BuildError::SigningError(e),
-            SignerError::VarsigError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
+            SignError::SigningError(e) => BuildError::SigningError(e),
         }
     }
 }
 
 /// Building methods that use async signing.
 ///
-/// This impl block uses async signing via the [`DidSigner`] trait's `signer()` method,
+/// This impl block uses async signing via the [`Issuer`] trait (which is a `Signer`),
 /// which works with both native `ed25519_dalek` signers and `WebCrypto` signers.
 #[allow(clippy::mismatching_type_param_order)]
-impl<D: DidSigner> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
+impl<D: Issuer> InvocationBuilder<D, D, D::Principal, D::Principal, Command, Vec<Cid>> {
     /// Builds the complete, signed [`Invocation`].
     ///
     /// Uses the issuer's signer (set via `.issuer()`) to sign the invocation.
-    /// The signing is performed asynchronously via the `AsyncSign::try_sign_async()` method.
+    /// The signing is performed asynchronously via `Signer::sign()`.
     ///
     /// # Errors
     ///
@@ -392,9 +385,9 @@ impl<D: DidSigner> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
     ///     .await?;
     /// ```
     #[allow(clippy::expect_used)]
-    pub async fn try_build(self) -> Result<super::Invocation<D::Did>, BuildError> {
-        let payload: super::InvocationPayload<D::Did> = super::InvocationPayload {
-            issuer: self.issuer.did().clone(),
+    pub async fn try_build(self) -> Result<super::Invocation<D::Principal>, BuildError> {
+        let payload: super::InvocationPayload<D::Principal> = super::InvocationPayload {
+            issuer: self.issuer.principal().clone(),
             audience: self.audience,
             subject: self.subject,
             command: self.command,
@@ -409,32 +402,28 @@ impl<D: DidSigner> InvocationBuilder<D, D, D::Did, D::Did, Command, Vec<Cid>> {
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        let varsig_config = self.issuer.did().varsig_config().clone();
+        let header: Varsig<
+            <D::Principal as Principal>::Algorithm,
+            DagCborCodec,
+            super::InvocationPayload<D::Principal>,
+        > = Varsig::new(DagCborCodec);
 
         // Sign the payload
-        let (sig, _encoded) = varsig_config
-            .try_sign(&DagCborCodec, self.issuer.signer(), &payload)
-            .await?;
-
-        let header: Varsig<
-            <D::Did as Did>::VarsigConfig,
-            DagCborCodec,
-            super::InvocationPayload<D::Did>,
-        > = Varsig::new(varsig_config, DagCborCodec);
+        let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
 
         let payload: EnvelopePayload<
-            <D::Did as Did>::VarsigConfig,
-            super::InvocationPayload<D::Did>,
+            <D::Principal as Principal>::Algorithm,
+            super::InvocationPayload<D::Principal>,
         > = EnvelopePayload { header, payload };
 
         #[allow(clippy::type_complexity)]
         let envelope: Envelope<
-            <D::Did as Did>::VarsigConfig,
-            super::InvocationPayload<D::Did>,
-            <<D::Did as Did>::VarsigConfig as Verify>::Signature,
+            <D::Principal as Principal>::Algorithm,
+            super::InvocationPayload<D::Principal>,
+            <<D::Principal as Principal>::Algorithm as SignatureAlgorithm>::Signature,
         > = Envelope(sig, payload);
 
-        let invocation: super::Invocation<D::Did> = super::Invocation(envelope);
+        let invocation: super::Invocation<D::Principal> = super::Invocation(envelope);
 
         Ok(invocation)
     }

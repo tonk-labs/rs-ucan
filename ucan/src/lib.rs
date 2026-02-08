@@ -1,6 +1,5 @@
 //! Core UCAN functionality.
 
-#![allow(clippy::multiple_crate_versions)] // syn
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod builder;
@@ -9,11 +8,12 @@ pub mod collection;
 pub mod command;
 pub mod crypto;
 pub mod delegation;
-pub mod did;
 pub mod envelope;
 pub mod future;
 pub mod invocation;
+pub mod issuer;
 pub mod number;
+pub mod principal;
 pub mod promise;
 // pub mod receipt; TODO Reenable after first release
 pub mod task;
@@ -28,7 +28,6 @@ pub use delegation::{
     builder::{BuildError as DelegationBuildError, DelegationBuilder},
     Delegation,
 };
-pub use did::{Ed25519Did, Ed25519Signer, KeyExport};
 pub use invocation::{
     builder::{BuildError as InvocationBuildError, InvocationBuilder},
     CheckFailed, Invocation, InvocationPayload,

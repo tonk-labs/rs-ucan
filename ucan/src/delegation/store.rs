@@ -17,17 +17,17 @@ use futures::{
 };
 use ipld_core::cid::Cid;
 use thiserror::Error;
-use varsig::verify::Verify;
+use varsig::algorithm::SignatureAlgorithm;
 
 use crate::{
-    did::Did,
     future::{FutureKind, Local, Sendable},
+    principal::Principal,
 };
 
 use super::Delegation;
 
 /// Delegation store.
-pub trait DelegationStore<K: FutureKind, D: Did, T: Borrow<Delegation<D>>> {
+pub trait DelegationStore<K: FutureKind, D: Principal, T: Borrow<Delegation<D>>> {
     /// Error type for insertion operations.
     type InsertError: Error;
 
@@ -53,7 +53,7 @@ pub trait DelegationStore<K: FutureKind, D: Did, T: Borrow<Delegation<D>>> {
 /// (the `S::InsertError` associated type).
 pub async fn insert<
     K: FutureKind,
-    D: Did,
+    D: Principal,
     T: Borrow<Delegation<D>>,
     S: DelegationStore<K, D, T>,
 >(
@@ -65,7 +65,7 @@ pub async fn insert<
     Ok(cid)
 }
 
-impl<D: Did, H: BuildHasher> DelegationStore<Local, D, Rc<Delegation<D>>>
+impl<D: Principal, H: BuildHasher> DelegationStore<Local, D, Rc<Delegation<D>>>
     for Rc<RefCell<HashMap<Cid, Rc<Delegation<D>>, H>>>
 {
     type InsertError = Infallible;
@@ -103,7 +103,7 @@ impl<D: Did, H: BuildHasher> DelegationStore<Local, D, Rc<Delegation<D>>>
     }
 }
 
-impl<D: Did, H: BuildHasher> DelegationStore<Local, D, Arc<Delegation<D>>>
+impl<D: Principal, H: BuildHasher> DelegationStore<Local, D, Arc<Delegation<D>>>
     for Arc<Mutex<HashMap<Cid, Arc<Delegation<D>>, H>>>
 {
     type InsertError = StorePoisoned;
@@ -142,11 +142,12 @@ impl<D: Did, H: BuildHasher> DelegationStore<Local, D, Arc<Delegation<D>>>
     }
 }
 
-impl<D: Did + Send + Sync, H: BuildHasher + Send> DelegationStore<Sendable, D, Arc<Delegation<D>>>
+impl<D: Principal + Send + Sync, H: BuildHasher + Send>
+    DelegationStore<Sendable, D, Arc<Delegation<D>>>
     for Arc<Mutex<HashMap<Cid, Arc<Delegation<D>>, H>>>
 where
-    <D as Did>::VarsigConfig: Send + Sync,
-    <<D as Did>::VarsigConfig as Verify>::Signature: Send + Sync,
+    <D as Principal>::Algorithm: Send + Sync,
+    <<D as Principal>::Algorithm as SignatureAlgorithm>::Signature: Send + Sync,
 {
     type InsertError = StorePoisoned;
     type GetError = LockedStoreGetError;

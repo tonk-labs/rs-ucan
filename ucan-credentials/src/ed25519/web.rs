@@ -11,9 +11,7 @@
 //! provides defense-in-depth: even if an attacker gains code execution in your
 //! service worker, they cannot exfiltrate the private key material.
 
-use super::Ed25519Signature;
-use crate::signer::KeyExport;
-use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
+use super::{Ed25519Signature, KeyExport};
 use js_sys::{Object, Reflect, Uint8Array};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
@@ -152,8 +150,13 @@ impl SigningKey {
     }
 }
 
-impl async_signature::AsyncSigner<Ed25519Signature> for SigningKey {
-    async fn sign_async(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
+impl SigningKey {
+    /// Sign a message using the WebCrypto API.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if signing fails.
+    pub async fn sign_bytes(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
         sign(&self.private_key, msg).await
     }
 }
@@ -557,7 +560,7 @@ impl From<&[u8; 32]> for Pkcs8 {
 /// # Example
 ///
 /// ```ignore
-/// use varsig::signature::eddsa::web::{SigningKey, ExtractableCryptoKey};
+/// use ucan_credentials::ed25519::web::{SigningKey, ExtractableCryptoKey};
 ///
 /// // Generate an extractable key
 /// let key = <SigningKey as ExtractableCryptoKey>::generate().await?;
