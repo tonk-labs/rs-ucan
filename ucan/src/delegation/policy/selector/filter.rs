@@ -658,6 +658,26 @@ impl<'a> Arbitrary<'a> for Filter {
     }
 }
 
+/// Native proptest strategy for `Filter`.
+#[cfg(feature = "property_test")]
+#[allow(dead_code)]
+pub(crate) fn arb_filter() -> impl proptest::strategy::Strategy<Value = Filter> {
+    use proptest::prelude::*;
+
+    let leaf = prop_oneof![
+        (0..100i32).prop_map(Filter::ArrayIndex),
+        any::<String>().prop_map(Filter::Field),
+        Just(Filter::Values),
+    ];
+
+    leaf.prop_recursive(
+        4,  // depth
+        16, // max nodes
+        1,  // items per recursive step
+        |inner| inner.prop_map(|f| Filter::Try(Box::new(f))),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,12 +690,12 @@ mod tests {
         #[cfg(feature = "property_test")]
         mod proptest_tests {
             use super::*;
+            use crate::delegation::policy::selector::filter::arb_filter;
             use proptest::prelude::*;
-            use proptest_arbitrary_interop::arb;
 
             proptest! {
                 #[test]
-                fn test_filter_round_trip_display_parse(filter in arb::<Filter>()) {
+                fn test_filter_round_trip_display_parse(filter in arb_filter()) {
                     let serialized = filter.to_string();
                     let deserialized = serialized.parse(); //
                     let expected = {
@@ -698,7 +718,7 @@ mod tests {
                 }
 
                 #[test]
-                fn test_filter_round_trip_dag_cbor(filter in arb::<Filter>()) {
+                fn test_filter_round_trip_dag_cbor(filter in arb_filter()) {
                     let serialized = serde_ipld_dagcbor::to_vec(&filter).unwrap();
                     let deserialized = serde_ipld_dagcbor::from_slice::<Filter>(&serialized);
                     prop_assert_eq!(Ok(filter), deserialized);

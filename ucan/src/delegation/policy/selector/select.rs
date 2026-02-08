@@ -260,13 +260,15 @@ mod tests {
 
     mod get {
         use super::*;
-        use crate::ipld::eq_with_float_nans_and_infinities;
+        use crate::{
+            delegation::policy::selector::filter::arb_filter,
+            ipld::{arb_internal_ipld, eq_with_float_nans_and_infinities},
+        };
         use proptest::prelude::*;
-        use proptest_arbitrary_interop::arb;
 
         proptest! {
             #[test_log::test]
-            fn test_identity(data in arb::<InternalIpld>()) {
+            fn test_identity(data in arb_internal_ipld()) {
                 let selector = Select::<InternalIpld>::from_str(".")?;
                 prop_assert!(eq_with_float_nans_and_infinities(&selector.get(&data.clone().into())?.into(), &data));
             }
@@ -274,7 +276,7 @@ mod tests {
 
         proptest! {
             #[test_log::test]
-            fn test_try_missing_is_null(data in arb::<InternalIpld>()) {
+            fn test_try_missing_is_null(data in arb_internal_ipld()) {
                 let selector = Select::<Ipld>::from_str(".foo?")?;
 
                 let mut cleaned_data = Ipld::from(data);
@@ -290,7 +292,7 @@ mod tests {
 
         proptest! {
             #[test_log::test]
-            fn test_try_missing_plus_trailing_is_null(data in arb::<InternalIpld>(), more in arb::<Vec<Filter>>()) {
+            fn test_try_missing_plus_trailing_is_null(data in arb_internal_ipld(), more in proptest::collection::vec(arb_filter(), 0..8)) {
                 let mut filters = vec![Filter::Try(Box::new(Filter::Field("foo".into())))];
 
                 for f in &more {

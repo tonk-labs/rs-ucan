@@ -26,7 +26,6 @@ nom-unicode.workspace = true
 nom.workspace = true
 nonempty.workspace = true
 proptest = { workspace = true, optional = true }
-proptest-arbitrary-interop = { workspace = true, optional = true }
 serde-value = "0.7"
 serde.workspace = true
 serde_bytes = "0.11.19"
@@ -61,7 +60,7 @@ wasm-bindgen-test = "0.3"
 default = []
 test_utils = ["arb", "property_test"]
 arb = ["dep:arbitrary"]
-property_test = ["dep:proptest", "dep:proptest-arbitrary-interop"]
+property_test = ["dep:proptest"]
 
 [lints]
 workspace = true

@@ -117,3 +117,44 @@ impl Selectable for InternalIpld {
         Ok(InternalIpld::from(ipld))
     }
 }
+
+/// Native proptest strategy for `InternalIpld`.
+///
+/// Uses `prop_recursive` to reliably generate recursive IPLD values
+/// including `Link(Cid)`, without the byte-exhaustion issues of the
+/// `proptest-arbitrary-interop` bridge.
+#[cfg(feature = "property_test")]
+#[allow(dead_code)]
+pub(crate) fn arb_internal_ipld() -> impl proptest::strategy::Strategy<Value = InternalIpld> {
+    use ipld_core::cid::{multihash::Multihash, CidGeneric};
+    use proptest::prelude::*;
+
+    let leaf = prop_oneof![
+        Just(InternalIpld::Null),
+        any::<bool>().prop_map(InternalIpld::Bool),
+        any::<i128>().prop_map(InternalIpld::Integer),
+        any::<f64>().prop_map(InternalIpld::Float),
+        any::<String>().prop_map(InternalIpld::String),
+        any::<Vec<u8>>().prop_map(InternalIpld::Bytes),
+        // Generate valid CIDv1 with SHA2-256 code (0x12) and 32-byte digest
+        proptest::array::uniform32(any::<u8>()).prop_map(|digest| {
+            #[allow(clippy::expect_used)]
+            let mh = Multihash::<64>::wrap(0x12, &digest).expect("valid multihash");
+            InternalIpld::Link(CidGeneric::new_v1(0x71, mh))
+        }),
+    ];
+
+    leaf.prop_recursive(
+        4,  // depth
+        64, // max nodes
+        8,  // items per collection
+        |inner| {
+            prop_oneof![
+                proptest::collection::vec(inner.clone(), 0..8)
+                    .prop_map(InternalIpld::List),
+                proptest::collection::btree_map(any::<String>(), inner, 0..8)
+                    .prop_map(InternalIpld::Map),
+            ]
+        },
+    )
+}
