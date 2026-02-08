@@ -2,6 +2,7 @@
 
 pub mod payload_tag;
 
+use crate::codec::CborCodec;
 use ipld_core::ipld::Ipld;
 use payload_tag::PayloadTag;
 use serde::{
@@ -9,7 +10,6 @@ use serde::{
     ser::{SerializeMap, SerializeTuple},
     Deserialize, Serialize,
 };
-use serde_ipld_dagcbor::codec::DagCborCodec;
 use signature::SignatureEncoding;
 use std::{fmt, marker::PhantomData};
 use varsig::{algorithm::SignatureAlgorithm, signature::Varsig};
@@ -107,7 +107,7 @@ impl<
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvelopePayload<V: SignatureAlgorithm, T: Serialize + for<'de> Deserialize<'de>> {
     /// Varsig header.
-    pub header: Varsig<V, DagCborCodec, T>,
+    pub header: Varsig<V, CborCodec, T>,
 
     /// Payload data.
     pub payload: T,
@@ -129,7 +129,7 @@ impl<'de, V, T> Deserialize<'de> for EnvelopePayload<V, T>
 where
     V: SignatureAlgorithm,
     T: Serialize + for<'any> Deserialize<'any>,
-    Varsig<V, DagCborCodec, T>: Deserialize<'de>,
+    Varsig<V, CborCodec, T>: Deserialize<'de>,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -142,7 +142,7 @@ where
         where
             V: SignatureAlgorithm,
             T: Serialize + for<'any> Deserialize<'any>,
-            Varsig<V, DagCborCodec, T>: Deserialize<'vde>,
+            Varsig<V, CborCodec, T>: Deserialize<'vde>,
         {
             type Value = EnvelopePayload<V, T>;
 
@@ -154,7 +154,7 @@ where
             where
                 M: MapAccess<'vde>,
             {
-                let mut header: Option<Varsig<V, DagCborCodec, T>> = None;
+                let mut header: Option<Varsig<V, CborCodec, T>> = None;
                 let mut payload: Option<T> = None;
 
                 while let Some(key) = map.next_key::<&str>()? {
@@ -174,8 +174,8 @@ where
                             &varsig_header_bytes,
                         );
 
-                        let varsig_header: Varsig<V, DagCborCodec, T> =
-                            Varsig::<V, DagCborCodec, T>::deserialize(bytes_de)?;
+                        let varsig_header: Varsig<V, CborCodec, T> =
+                            Varsig::<V, CborCodec, T>::deserialize(bytes_de)?;
 
                         header = Some(varsig_header);
                     } else {

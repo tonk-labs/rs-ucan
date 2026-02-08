@@ -2,22 +2,25 @@
 
 use std::future::Future;
 
+use crate::algorithm::SignatureAlgorithm;
+
 /// Can verify signatures of a given type.
 ///
-/// Each verifier type maps to exactly one signature type (associated type,
-/// not type parameter).
+/// Each verifier type maps to exactly one signature algorithm
+/// (via the associated `Algorithm` type).
 pub trait Verifier {
-    /// The signature type this verifier checks.
-    type Signature;
+    /// Cryptographic algorithm of the signature this verifier verifies.
+    type Algorithm: SignatureAlgorithm;
 
-    /// Verify a signature for the given message asynchronously.
+    /// Verify that provided signature is for the given payload and was signed
+    /// by the corresponding signer.
     ///
     /// # Errors
     ///
     /// Returns `signature::Error` if verification fails.
     fn verify(
         &self,
-        msg: &[u8],
-        signature: &Self::Signature,
+        payload: &[u8],
+        signature: &<Self::Algorithm as SignatureAlgorithm>::Signature,
     ) -> impl Future<Output = Result<(), signature::Error>>;
 }

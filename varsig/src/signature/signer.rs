@@ -2,19 +2,31 @@
 
 use std::future::Future;
 
+use crate::algorithm::SignatureAlgorithm;
+
+use super::verifier::Verifier;
+
 /// Can produce signatures of a given type.
 ///
-/// Each signer type maps to exactly one signature type (associated type,
-/// not type parameter). The connection to a [`SignatureAlgorithm`](crate::algorithm::SignatureAlgorithm)
-/// is via the shared `Signature` type: `Signer::Signature == SignatureAlgorithm::Signature`.
+/// Each signer type maps to exactly one signature algorithm
+/// (via the associated `Algorithm` type) and one principal (public identity).
 pub trait Signer {
-    /// The signature type this signer produces.
-    type Signature;
+    /// The signature algorithm this signer uses.
+    type Algorithm: SignatureAlgorithm;
 
-    /// Sign a message asynchronously.
+    /// The principal (public identity) this signer signs as.
+    type Principal: Verifier<Algorithm = Self::Algorithm>;
+
+    /// Sign a given payload.
     ///
     /// # Errors
     ///
     /// Returns `signature::Error` if signing fails.
-    fn sign(&self, msg: &[u8]) -> impl Future<Output = Result<Self::Signature, signature::Error>>;
+    fn sign(
+        &self,
+        payload: &[u8],
+    ) -> impl Future<Output = Result<<Self::Algorithm as SignatureAlgorithm>::Signature, signature::Error>>;
+
+    /// Get the principal (public identity) for this signer.
+    fn principal(&self) -> &Self::Principal;
 }

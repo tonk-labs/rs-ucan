@@ -26,13 +26,18 @@ use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
+use serde_ipld_dagcbor::error::CodecError;
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::algorithm::SignatureAlgorithm;
+use varsig::{SignatureAlgorithm, Verifier};
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
 pub struct Delegation<D: Principal>(
-    Envelope<D::Algorithm, DelegationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
+    Envelope<
+        <D as Verifier>::Algorithm,
+        DelegationPayload<D>,
+        <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
+    >,
 );
 
 impl<D: Principal> Delegation<D> {
@@ -97,15 +102,19 @@ impl<D: Principal> Delegation<D> {
     ///
     /// # Errors
     ///
-    /// Returns an error if signature verification fails.
-    pub async fn verify_signature(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// Returns a [`SignatureVerificationError`] if signature verification fails.
+    pub async fn verify_signature(&self) -> Result<(), SignatureVerificationError> {
         let signature = &self.0 .0;
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
-        header
-            .verify(payload.issuer(), payload, signature)
+        let encoded = header
+            .encode(payload)
+            .map_err(SignatureVerificationError::EncodingError)?;
+        payload
+            .issuer()
+            .verify(&encoded, signature)
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(SignatureVerificationError::VerificationError)
     }
 }
 
@@ -126,7 +135,7 @@ impl<D: Principal> Serialize for Delegation<D> {
 
 impl<'de, I: Principal> Deserialize<'de> for Delegation<I>
 where
-    <I::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
+    <<I as Verifier>::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -406,6 +415,18 @@ where
 
         deserializer.deserialize_map(PayloadVisitor::<D>(std::marker::PhantomData))
     }
+}
+
+/// Error type for delegation signature verification.
+#[derive(Debug, thiserror::Error)]
+pub enum SignatureVerificationError {
+    /// Payload encoding failed.
+    #[error("encoding error: {0}")]
+    EncodingError(CodecError),
+
+    /// Cryptographic verification failed.
+    #[error("verification error: {0}")]
+    VerificationError(signature::Error),
 }
 
 impl<D: Principal> PayloadTag for DelegationPayload<D> {

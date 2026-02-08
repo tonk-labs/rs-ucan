@@ -17,7 +17,7 @@ use futures::{
 };
 use ipld_core::cid::Cid;
 use thiserror::Error;
-use varsig::algorithm::SignatureAlgorithm;
+use varsig::{algorithm::SignatureAlgorithm, signature::verifier::Verifier};
 
 use crate::{
     future::{FutureKind, Local, Sendable},
@@ -146,8 +146,8 @@ impl<D: Principal + Send + Sync, H: BuildHasher + Send>
     DelegationStore<Sendable, D, Arc<Delegation<D>>>
     for Arc<Mutex<HashMap<Cid, Arc<Delegation<D>>, H>>>
 where
-    <D as Principal>::Algorithm: Send + Sync,
-    <<D as Principal>::Algorithm as SignatureAlgorithm>::Signature: Send + Sync,
+    <D as Verifier>::Algorithm: Send + Sync,
+    <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature: Send + Sync,
 {
     type InsertError = StorePoisoned;
     type GetError = LockedStoreGetError;

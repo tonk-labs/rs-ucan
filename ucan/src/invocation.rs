@@ -25,10 +25,9 @@ use crate::{
 use builder::InvocationBuilder;
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde::{Deserialize, Serialize};
-use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::{algorithm::SignatureAlgorithm, codec::Codec};
+use varsig::{SignatureAlgorithm, Verifier};
 
 /// Top-level UCAN Invocation.
 ///
@@ -36,7 +35,11 @@ use varsig::{algorithm::SignatureAlgorithm, codec::Codec};
 /// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
 pub struct Invocation<D: Principal>(
-    Envelope<D::Algorithm, InvocationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
+    Envelope<
+        <D as Verifier>::Algorithm,
+        InvocationPayload<D>,
+        <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
+    >,
 );
 
 impl<D: Principal> Invocation<D> {
@@ -116,10 +119,20 @@ impl<D: Principal> Invocation<D> {
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
 
-        header
-            .verify(payload.issuer(), payload, signature)
+        let encoded = header.encode(payload).map_err(|e| {
+            InvocationCheckError::SignatureVerification(SignatureVerificationError::EncodingError(
+                e,
+            ))
+        })?;
+        payload
+            .issuer()
+            .verify(&encoded, signature)
             .await
-            .map_err(InvocationCheckError::SignatureVerification)?;
+            .map_err(|e| {
+                InvocationCheckError::SignatureVerification(
+                    SignatureVerificationError::VerificationError(e),
+                )
+            })?;
 
         // 2. Check proof chain
         payload
@@ -143,10 +156,14 @@ impl<D: Principal> Invocation<D> {
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
 
-        header
-            .verify(payload.issuer(), payload, signature)
+        let encoded = header
+            .encode(payload)
+            .map_err(SignatureVerificationError::EncodingError)?;
+        payload
+            .issuer()
+            .verify(&encoded, signature)
             .await
-            .map_err(SignatureVerificationError)
+            .map_err(SignatureVerificationError::VerificationError)
     }
 }
 
@@ -167,7 +184,7 @@ impl<D: Principal> Serialize for Invocation<D> {
 
 impl<'de, I: Principal> Deserialize<'de> for Invocation<I>
 where
-    <I::Algorithm as SignatureAlgorithm>::Signature: for<'xe> Deserialize<'xe>,
+    <<I as Verifier>::Algorithm as SignatureAlgorithm>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -403,10 +420,15 @@ pub enum StoredCheckError<
 
 /// Error type for signature verification failures.
 #[derive(Debug, Error)]
-#[error("signature verification failed: {0}")]
-pub struct SignatureVerificationError(
-    pub varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
-);
+pub enum SignatureVerificationError {
+    /// Payload encoding failed.
+    #[error("encoding error: {0}")]
+    EncodingError(serde_ipld_dagcbor::error::CodecError),
+
+    /// Cryptographic verification failed.
+    #[error("verification error: {0}")]
+    VerificationError(signature::Error),
+}
 
 /// Errors that can occur when checking an invocation (signature + proofs)
 #[derive(Debug, Error)]
@@ -417,10 +439,8 @@ pub enum InvocationCheckError<
     S: DelegationStore<K, D, T>,
 > {
     /// Signature verification failed
-    #[error("signature verification failed: {0}")]
-    SignatureVerification(
-        varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
-    ),
+    #[error(transparent)]
+    SignatureVerification(SignatureVerificationError),
 
     /// Proof chain check failed
     #[error(transparent)]

@@ -9,7 +9,8 @@
 
 pub mod algorithm;
 pub mod codec;
-pub mod encoding;
 pub mod signature;
 
+pub use algorithm::*;
+pub use codec::*;
 pub use signature::*;

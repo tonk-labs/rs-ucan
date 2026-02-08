@@ -1,20 +1,22 @@
 //! Typesafe builder for [`InvocationPayload`].
 
 use crate::{
+    codec::CborCodec,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{Envelope, EnvelopePayload},
     issuer::Issuer,
-    principal::Principal,
     promise::Promised,
     sealed::{CommandOrUnset, IssuerOrUnset, PrincipalOrUnset, ProofsOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
-use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
+use varsig::{
+    algorithm::SignatureAlgorithm,
+    signature::{verifier::Verifier, Varsig},
+};
 
 /// Typesafe builder for [`Invocation`].
 #[allow(private_bounds)]
@@ -340,15 +342,6 @@ pub enum BuildError {
     SigningError(#[from] signature::Error),
 }
 
-impl<E: std::error::Error> From<SignError<E>> for BuildError {
-    fn from(e: SignError<E>) -> Self {
-        match e {
-            SignError::EncodingError(e) => BuildError::EncodingError(e.to_string()),
-            SignError::SigningError(e) => BuildError::SigningError(e),
-        }
-    }
-}
-
 /// Building methods that use async signing.
 ///
 /// This impl block uses async signing via the [`Issuer`] trait (which is a `Signer`),
@@ -357,8 +350,8 @@ impl<E: std::error::Error> From<SignError<E>> for BuildError {
 impl<D: Issuer> InvocationBuilder<D, D, D::Principal, D::Principal, Command, Vec<Cid>> {
     /// Builds the complete, signed [`Invocation`].
     ///
-    /// Uses the issuer's signer (set via `.issuer()`) to sign the invocation.
-    /// The signing is performed asynchronously via `Signer::sign()`.
+    /// Uses the issuer (set via `.issuer()`) to sign the invocation.
+    /// The signing is performed asynchronously via [`Issuer::sign()`].
     ///
     /// # Errors
     ///
@@ -403,24 +396,31 @@ impl<D: Issuer> InvocationBuilder<D, D, D::Principal, D::Principal, Command, Vec
         };
 
         let header: Varsig<
-            <D::Principal as Principal>::Algorithm,
-            DagCborCodec,
+            <D::Principal as Verifier>::Algorithm,
+            CborCodec,
             super::InvocationPayload<D::Principal>,
-        > = Varsig::new(DagCborCodec);
+        > = Varsig::new(CborCodec);
 
-        // Sign the payload
-        let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
+        // Encode and sign the payload
+        let encoded = header
+            .encode(&payload)
+            .map_err(|e| BuildError::EncodingError(e.to_string()))?;
+        let sig = self
+            .issuer
+            .sign(&encoded)
+            .await
+            .map_err(BuildError::SigningError)?;
 
         let payload: EnvelopePayload<
-            <D::Principal as Principal>::Algorithm,
+            <D::Principal as Verifier>::Algorithm,
             super::InvocationPayload<D::Principal>,
         > = EnvelopePayload { header, payload };
 
         #[allow(clippy::type_complexity)]
         let envelope: Envelope<
-            <D::Principal as Principal>::Algorithm,
+            <D::Principal as Verifier>::Algorithm,
             super::InvocationPayload<D::Principal>,
-            <<D::Principal as Principal>::Algorithm as SignatureAlgorithm>::Signature,
+            <<D::Principal as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
         > = Envelope(sig, payload);
 
         let invocation: super::Invocation<D::Principal> = super::Invocation(envelope);

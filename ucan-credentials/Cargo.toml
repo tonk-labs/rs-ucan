@@ -24,7 +24,6 @@ serde.workspace = true
 serde_bytes = "0.11.19"
 signature.workspace = true
 thiserror.workspace = true
-ucan = { path = "../ucan" }
 varsig = { path = "../varsig" }
 
 # WASM dependencies (always available on wasm32-unknown-unknown)
@@ -49,6 +48,7 @@ serde_ipld_dagcbor.workspace = true
 serde_json = "1.0"
 testresult = "0.4.1"
 tokio = { version = "1", features = ["rt", "macros"] }
+ucan = { path = "../ucan" }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "0.3"

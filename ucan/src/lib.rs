@@ -4,6 +4,7 @@
 
 pub mod builder;
 pub mod cid;
+pub mod codec;
 pub mod collection;
 pub mod command;
 pub mod crypto;
