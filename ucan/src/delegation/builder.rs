@@ -2,19 +2,18 @@
 
 use super::{policy::predicate::Predicate, subject::DelegatedSubject};
 use crate::{
+    codec::CborCodec,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{Envelope, EnvelopePayload},
     issuer::Issuer,
-    principal::Principal,
     sealed::{CommandOrUnset, DelegatedSubjectOrUnset, IssuerOrUnset, PrincipalOrUnset},
     time::timestamp::Timestamp,
     unset::Unset,
 };
 use ipld_core::ipld::Ipld;
-use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{algorithm::SignatureAlgorithm, signature::SignError, Varsig};
+use varsig::{SignError, SignatureAlgorithm, Varsig, Verifier};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 #[derive(Default, Debug, Clone)]
@@ -289,8 +288,8 @@ impl<E: std::error::Error> From<SignError<E>> for BuildError {
 impl<D: Issuer> DelegationBuilder<D, D, D::Principal, DelegatedSubject<D::Principal>, Command> {
     /// Builds the complete, signed [`Delegation`].
     ///
-    /// Uses the issuer's signer (set via `.issuer()`) to sign the delegation.
-    /// The signing is performed asynchronously via `Signer::sign()`.
+    /// Uses the issuer (set via `.issuer()`) to sign the delegation.
+    /// The signing is performed asynchronously via [`Issuer::sign()`].
     ///
     /// # Errors
     ///
@@ -332,24 +331,24 @@ impl<D: Issuer> DelegationBuilder<D, D, D::Principal, DelegatedSubject<D::Princi
         };
 
         let header: Varsig<
-            <D::Principal as Principal>::Algorithm,
-            DagCborCodec,
+            <D::Principal as Verifier>::Algorithm,
+            CborCodec,
             super::DelegationPayload<D::Principal>,
-        > = Varsig::new(DagCborCodec);
+        > = Varsig::new(CborCodec);
 
         // Sign the payload
         let (sig, _encoded) = header.sign(&self.issuer, &payload).await?;
 
         let payload: EnvelopePayload<
-            <D::Principal as Principal>::Algorithm,
+            <D::Principal as Verifier>::Algorithm,
             super::DelegationPayload<D::Principal>,
         > = EnvelopePayload { header, payload };
 
         #[allow(clippy::type_complexity)]
         let envelope: Envelope<
-            <D::Principal as Principal>::Algorithm,
+            <D::Principal as Verifier>::Algorithm,
             super::DelegationPayload<D::Principal>,
-            <<D::Principal as Principal>::Algorithm as SignatureAlgorithm>::Signature,
+            <<D::Principal as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
         > = Envelope(sig, payload);
 
         let delegation: super::Delegation<D::Principal> = super::Delegation(envelope);

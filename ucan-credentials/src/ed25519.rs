@@ -4,10 +4,9 @@ use base58::ToBase58;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
-use ucan::{issuer::Issuer, principal::Principal};
 use varsig::{
-    algorithm::eddsa::{Ed25519, Ed25519Signature},
-    signature::{signer::Signer, verifier::Verifier},
+    eddsa::{Ed25519, Ed25519Signature},
+    Signer, Verifier,
 };
 
 // Platform-specific implementations
@@ -459,19 +458,15 @@ pub enum Ed25519DidFromStrError {
 
 // === Verifier impl for Ed25519Did ===
 impl Verifier for Ed25519Did {
-    type Signature = Ed25519Signature;
+    type Algorithm = Ed25519;
 
     async fn verify(
         &self,
         msg: &[u8],
-        signature: &Ed25519Signature,
+        signature: &<Ed25519 as varsig::algorithm::SignatureAlgorithm>::Signature,
     ) -> Result<(), signature::Error> {
         self.0.verify_signature(msg, signature).await
     }
-}
-
-impl Principal for Ed25519Did {
-    type Algorithm = Ed25519;
 }
 
 impl Serialize for Ed25519Did {
@@ -658,15 +653,12 @@ impl std::fmt::Display for Ed25519Signer {
 
 // === Signer impl for Ed25519Signer ===
 impl Signer for Ed25519Signer {
-    type Signature = Ed25519Signature;
+    type Algorithm = Ed25519;
+    type Principal = Ed25519Did;
 
     async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
         self.signer.sign_bytes(msg).await
     }
-}
-
-impl Issuer for Ed25519Signer {
-    type Principal = Ed25519Did;
 
     fn principal(&self) -> &Self::Principal {
         &self.did

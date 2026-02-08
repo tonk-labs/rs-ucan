@@ -7,6 +7,7 @@ pub mod builder;
 
 use crate::{
     cid::to_dagcbor_cid,
+    codec::CborCodec,
     command::Command,
     crypto::nonce::Nonce,
     delegation::{
@@ -25,10 +26,9 @@ use crate::{
 use builder::InvocationBuilder;
 use ipld_core::{cid::Cid, ipld::Ipld};
 use serde::{Deserialize, Serialize};
-use serde_ipld_dagcbor::codec::DagCborCodec;
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug};
 use thiserror::Error;
-use varsig::{algorithm::SignatureAlgorithm, codec::Codec};
+use varsig::{Codec, SignatureAlgorithm, Verifier};
 
 /// Top-level UCAN Invocation.
 ///
@@ -36,7 +36,11 @@ use varsig::{algorithm::SignatureAlgorithm, codec::Codec};
 /// It is backed by UCAN Delegation(s).
 #[derive(Clone)]
 pub struct Invocation<D: Principal>(
-    Envelope<D::Algorithm, InvocationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
+    Envelope<
+        <D as Verifier>::Algorithm,
+        InvocationPayload<D>,
+        <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
+    >,
 );
 
 impl<D: Principal> Invocation<D> {
@@ -167,7 +171,7 @@ impl<D: Principal> Serialize for Invocation<D> {
 
 impl<'de, I: Principal> Deserialize<'de> for Invocation<I>
 where
-    <I::Algorithm as SignatureAlgorithm>::Signature: for<'xe> Deserialize<'xe>,
+    <<I as Verifier>::Algorithm as SignatureAlgorithm>::Signature: for<'xe> Deserialize<'xe>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
@@ -405,7 +409,7 @@ pub enum StoredCheckError<
 #[derive(Debug, Error)]
 #[error("signature verification failed: {0}")]
 pub struct SignatureVerificationError(
-    pub varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+    pub varsig::signature::VerificationError<<CborCodec as Codec<()>>::EncodingError>,
 );
 
 /// Errors that can occur when checking an invocation (signature + proofs)
@@ -419,7 +423,7 @@ pub enum InvocationCheckError<
     /// Signature verification failed
     #[error("signature verification failed: {0}")]
     SignatureVerification(
-        varsig::signature::VerificationError<<DagCborCodec as Codec<()>>::EncodingError>,
+        varsig::signature::VerificationError<<CborCodec as Codec<()>>::EncodingError>,
     ),
 
     /// Proof chain check failed

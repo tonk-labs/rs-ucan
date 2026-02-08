@@ -27,12 +27,16 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::algorithm::SignatureAlgorithm;
+use varsig::{SignatureAlgorithm, Verifier};
 
 /// Top-level UCAN Delegation.
 #[derive(Clone)]
 pub struct Delegation<D: Principal>(
-    Envelope<D::Algorithm, DelegationPayload<D>, <D::Algorithm as SignatureAlgorithm>::Signature>,
+    Envelope<
+        <D as Verifier>::Algorithm,
+        DelegationPayload<D>,
+        <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
+    >,
 );
 
 impl<D: Principal> Delegation<D> {
@@ -126,7 +130,7 @@ impl<D: Principal> Serialize for Delegation<D> {
 
 impl<'de, I: Principal> Deserialize<'de> for Delegation<I>
 where
-    <I::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
+    <<I as Verifier>::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;

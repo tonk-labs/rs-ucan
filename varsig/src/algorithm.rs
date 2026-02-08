@@ -14,7 +14,7 @@ use std::fmt::Debug;
 /// This trait captures the metadata needed to encode/decode a signature
 /// algorithm in a Varsig header (prefix tag, config tags, reconstruction
 /// from tags). It does NOT know about signers or verifiers.
-pub trait SignatureAlgorithm: Sized + Debug + Default {
+pub trait SignatureAlgorithm: Sized + Debug + Default + Clone {
     /// The signature type produced by this algorithm.
     type Signature: SignatureEncoding + Debug;
 
