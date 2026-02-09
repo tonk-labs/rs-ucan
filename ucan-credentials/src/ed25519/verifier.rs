@@ -1,7 +1,6 @@
 //! Ed25519 DID principal and verifier.
 
-use super::error::Ed25519DidFromStrError;
-use super::{Ed25519Signature, Ed25519VerifyingKey};
+use super::{error::Ed25519DidFromStrError, Ed25519Signature, Ed25519VerifyingKey};
 use base58::ToBase58;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::str::FromStr;

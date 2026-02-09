@@ -1,7 +1,9 @@
 //! UCAN issuer trait.
 
-use varsig::principal::Principal;
-use varsig::signature::{Signature, Signer};
+use varsig::{
+    principal::Principal,
+    signature::{Signature, Signer},
+};
 
 /// An entity that can issue UCANs: it can sign tokens and is
 /// identified by a DID.

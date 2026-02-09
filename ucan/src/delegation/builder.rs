@@ -1,7 +1,6 @@
 //! Typesafe builder for [`Delegation`].
 
 use super::policy::predicate::Predicate;
-use crate::subject::Subject;
 use crate::{
     codec::CborCodec,
     command::Command,
@@ -9,6 +8,7 @@ use crate::{
     envelope::{Envelope, EnvelopePayload},
     issuer::Issuer,
     sealed::{CommandOrUnset, DidOrUnset, IssuerOrUnset, SubjectOrUnset},
+    subject::Subject,
     time::timestamp::Timestamp,
     unset::Unset,
 };

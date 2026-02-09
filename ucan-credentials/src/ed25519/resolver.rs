@@ -1,7 +1,6 @@
 //! Ed25519 DID key resolver.
 
-use super::error::Ed25519ResolveError;
-use super::verifier::Ed25519Principal;
+use super::{error::Ed25519ResolveError, verifier::Ed25519Principal};
 use varsig::{eddsa::Ed25519Signature, Did, Verifier};
 
 /// Resolves `did:key` strings to Ed25519 verifiers.

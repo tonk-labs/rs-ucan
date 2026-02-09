@@ -177,8 +177,7 @@ impl<'de, V: SignatureAlgorithm, C: Codec<T>, T> Deserialize<'de> for Varsig<V, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::algorithm::eddsa::Ed25519;
-    use crate::algorithm::eddsa::Ed25519Signature;
+    use crate::algorithm::eddsa::{Ed25519, Ed25519Signature};
     use std::io::{BufRead, Write};
     use testresult::TestResult;
 

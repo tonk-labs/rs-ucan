@@ -1,8 +1,6 @@
 //! Ed25519 signer implementation.
 
-use super::error::Ed25519SignerError;
-use super::verifier::Ed25519Principal;
-use super::Ed25519SigningKey;
+use super::{error::Ed25519SignerError, verifier::Ed25519Principal, Ed25519SigningKey};
 use crate::key::KeyExport;
 use serde::Serialize;
 use varsig::{eddsa::Ed25519Signature, Did, Principal, Signer};

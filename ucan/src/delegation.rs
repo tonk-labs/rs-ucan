@@ -7,12 +7,12 @@ pub mod builder;
 pub mod policy;
 pub mod store;
 
-use crate::subject::Subject;
 use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{payload_tag::PayloadTag, Envelope},
+    subject::Subject,
     time::timestamp::Timestamp,
 };
 use ipld_core::{cid::Cid, ipld::Ipld};

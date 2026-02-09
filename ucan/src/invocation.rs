@@ -25,7 +25,11 @@ use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use std::{borrow::Borrow, borrow::Cow, collections::BTreeMap, fmt::Debug};
+use std::{
+    borrow::{Borrow, Cow},
+    collections::BTreeMap,
+    fmt::Debug,
+};
 use thiserror::Error;
 use varsig::{Did, Resolver, Signature, Verifier};
 
