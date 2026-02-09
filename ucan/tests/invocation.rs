@@ -1,6 +1,12 @@
 //! Invocation integration tests using Ed25519 concrete types.
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, str::FromStr};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ops::{Bound, RangeBounds},
+    rc::Rc,
+    str::FromStr,
+};
 use testresult::TestResult;
 use ucan::{
     command::Command,
@@ -13,6 +19,7 @@ use ucan::{
     invocation::{builder::InvocationBuilder, Invocation},
     promise::Promised,
     subject::Subject,
+    time::{TimeRange, Timestamp},
 };
 use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Signer};
 use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
@@ -1224,5 +1231,288 @@ async fn chain_check_valid_self_issued_audience_differs_from_subject() -> TestRe
         .check(&delegation_store, &Ed25519KeyResolver)
         .await?;
 
+    Ok(())
+}
+
+// --- Time bounds tests ---
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_returns_unbounded_range_for_self_issued() -> TestResult {
+    let subject = test_signer(8).await;
+    let delegation_store = new_store();
+
+    let invocation = InvocationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .proofs(vec![])
+        .try_build()
+        .await?;
+
+    let range = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await?;
+
+    assert_eq!(range, TimeRange::unbounded());
+    Ok(())
+}
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_returns_delegation_time_bounds() -> TestResult {
+    let subject = test_signer(9).await;
+    let invoker = test_signer(10).await;
+
+    let exp = Timestamp::five_minutes_from_now();
+
+    let delegation = DelegationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&invoker)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .expiration(exp)
+        .try_build()
+        .await?;
+
+    let delegation_store = new_store();
+    let cid = store_delegation(&delegation_store, delegation).await;
+
+    let invocation = InvocationBuilder::new()
+        .issuer(invoker.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .proofs(vec![cid])
+        .try_build()
+        .await?;
+
+    let range = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await?;
+
+    assert_eq!(range.not_before, Bound::Unbounded);
+    assert_eq!(range.expiration, Bound::Included(exp));
+    assert!(range.contains(&Timestamp::now()));
+    Ok(())
+}
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_narrows_time_range_across_chain() -> TestResult {
+    // Two-hop chain where each delegation has different time bounds.
+    // The result should be the intersection: [later nbf, earlier exp].
+    let subject = test_signer(11).await;
+    let middleman = test_signer(12).await;
+    let invoker = test_signer(13).await;
+
+    let now = Timestamp::now();
+    let exp_wide = Timestamp::five_years_from_now();
+    let exp_narrow = Timestamp::five_minutes_from_now();
+
+    // First delegation: wide expiration, has nbf = now
+    let delegation1 = DelegationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&middleman)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .not_before(now)
+        .expiration(exp_wide)
+        .try_build()
+        .await?;
+
+    // Second delegation: narrow expiration, no nbf
+    let delegation2 = DelegationBuilder::new()
+        .issuer(middleman.clone())
+        .audience(&invoker)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .expiration(exp_narrow)
+        .try_build()
+        .await?;
+
+    let delegation_store = new_store();
+    let cid1 = store_delegation(&delegation_store, delegation1).await;
+    let cid2 = store_delegation(&delegation_store, delegation2).await;
+
+    let invocation = InvocationBuilder::new()
+        .issuer(invoker.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .proofs(vec![cid1, cid2])
+        .try_build()
+        .await?;
+
+    let range = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await?;
+
+    // nbf = max(now, unbounded) = now
+    assert_eq!(range.not_before, Bound::Included(now));
+    // exp = min(exp_wide, exp_narrow) = exp_narrow
+    assert_eq!(range.expiration, Bound::Included(exp_narrow));
+    Ok(())
+}
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_fails_empty_time_window() -> TestResult {
+    // Two delegations with non-overlapping time windows.
+    // First: expires at T1. Second: not valid before T2 where T2 > T1.
+    // The intersection is empty.
+    let subject = test_signer(14).await;
+    let middleman = test_signer(15).await;
+    let invoker = test_signer(16).await;
+
+    // T1 = now (already in the past relative to T2)
+    let t1 = Timestamp::now();
+    // T2 = 5 years from now (well after T1)
+    let t2 = Timestamp::five_years_from_now();
+
+    // First delegation: expires at T1
+    let delegation1 = DelegationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&middleman)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .expiration(t1)
+        .try_build()
+        .await?;
+
+    // Second delegation: not valid before T2
+    let delegation2 = DelegationBuilder::new()
+        .issuer(middleman.clone())
+        .audience(&invoker)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .not_before(t2)
+        .try_build()
+        .await?;
+
+    let delegation_store = new_store();
+    let cid1 = store_delegation(&delegation_store, delegation1).await;
+    let cid2 = store_delegation(&delegation_store, delegation2).await;
+
+    let invocation = InvocationBuilder::new()
+        .issuer(invoker.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .proofs(vec![cid1, cid2])
+        .try_build()
+        .await?;
+
+    let result = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await;
+    let err = result.expect_err("Should fail: time windows don't overlap");
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("no valid time window"),
+        "Error should mention invalid time window, got: {err_msg}"
+    );
+
+    Ok(())
+}
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_invocation_expiration_narrows_range() -> TestResult {
+    // Delegation has wide expiration, but invocation has a tighter one.
+    let subject = test_signer(17).await;
+    let invoker = test_signer(18).await;
+
+    let exp_delegation = Timestamp::five_years_from_now();
+    let exp_invocation = Timestamp::five_minutes_from_now();
+
+    let delegation = DelegationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&invoker)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .expiration(exp_delegation)
+        .try_build()
+        .await?;
+
+    let delegation_store = new_store();
+    let cid = store_delegation(&delegation_store, delegation).await;
+
+    let invocation = InvocationBuilder::new()
+        .issuer(invoker.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .expiration(exp_invocation)
+        .proofs(vec![cid])
+        .try_build()
+        .await?;
+
+    let range = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await?;
+
+    // The invocation's tighter expiration should win
+    assert_eq!(range.expiration, Bound::Included(exp_invocation));
+    Ok(())
+}
+
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn chain_check_narrow_then_wide_keeps_narrow_bounds() -> TestResult {
+    // Two-hop chain: first delegation has a narrow window [now, now+5min],
+    // second delegation has a wider window [no nbf, now+5years].
+    // The result should be the narrow window from the first delegation.
+    let subject = test_signer(19).await;
+    let middleman = test_signer(20).await;
+    let invoker = test_signer(21).await;
+
+    let now = Timestamp::now();
+    let exp_narrow = Timestamp::five_minutes_from_now();
+    let exp_wide = Timestamp::five_years_from_now();
+
+    // First delegation: narrow window [now, now+5min]
+    let delegation1 = DelegationBuilder::new()
+        .issuer(subject.clone())
+        .audience(&middleman)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .not_before(now)
+        .expiration(exp_narrow)
+        .try_build()
+        .await?;
+
+    // Second delegation: wide window [unbounded, now+5years]
+    let delegation2 = DelegationBuilder::new()
+        .issuer(middleman.clone())
+        .audience(&invoker)
+        .subject(Subject::Specific(subject.did()))
+        .command(vec!["test".to_string()])
+        .expiration(exp_wide)
+        .try_build()
+        .await?;
+
+    let delegation_store = new_store();
+    let cid1 = store_delegation(&delegation_store, delegation1).await;
+    let cid2 = store_delegation(&delegation_store, delegation2).await;
+
+    let invocation = InvocationBuilder::new()
+        .issuer(invoker.clone())
+        .audience(&subject)
+        .subject(&subject)
+        .command(vec!["test".to_string()])
+        .proofs(vec![cid1, cid2])
+        .try_build()
+        .await?;
+
+    let range = invocation
+        .check(&delegation_store, &Ed25519KeyResolver)
+        .await?;
+
+    // nbf = max(now, unbounded) = now (narrow wins)
+    assert_eq!(range.not_before, Bound::Included(now));
+    // exp = min(exp_narrow, exp_wide) = exp_narrow (narrow wins)
+    assert_eq!(range.expiration, Bound::Included(exp_narrow));
     Ok(())
 }
