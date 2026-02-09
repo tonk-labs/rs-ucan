@@ -1,8 +1,12 @@
-//! Subject tests using Ed25519 concrete types.
+//! Subject serialization tests.
 
 use serde_ipld_dagcbor::{from_slice, to_vec};
 use ucan::subject::Subject;
-use varsig::did::Did;
+use ucan_credentials::ed25519::Ed25519Signer;
+use varsig::{did::Did, principal::Principal};
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 #[test]
 fn any_serializes_to_null() {
@@ -28,15 +32,11 @@ fn any_roundtrip() {
     assert_eq!(decoded, Subject::Any);
 }
 
-#[test]
-fn specific_roundtrip() {
-    let key = ed25519_dalek::VerifyingKey::from_bytes(&[
-        215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243,
-        218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26,
-    ])
-    .unwrap();
-    let did: ucan_credentials::ed25519::Ed25519Principal = key.into();
-    let did_key: Did = Did::new(did.to_string());
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+async fn specific_roundtrip() {
+    let signer = Ed25519Signer::import(&[55u8; 32]).await.unwrap();
+    let did_key: Did = signer.did();
     let subject = Subject::Specific(did_key.clone());
 
     let bytes = to_vec(&subject).unwrap();

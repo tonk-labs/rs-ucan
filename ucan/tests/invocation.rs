@@ -10,21 +10,25 @@ use ucan::{
 use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Signer};
 use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 /// Create a deterministic test signer from a seed.
-fn test_signer(seed: u8) -> Ed25519Signer {
-    ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
+async fn test_signer(seed: u8) -> Ed25519Signer {
+    Ed25519Signer::import(&[seed; 32]).await.unwrap()
 }
 
 /// Create a deterministic test DID from a seed.
-fn test_did(seed: u8) -> Did {
-    test_signer(seed).did()
+async fn test_did(seed: u8) -> Did {
+    test_signer(seed).await.did()
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn issuer_round_trip() -> TestResult {
-    let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-    let aud: Did = test_did(0);
-    let sub: Did = test_did(0);
+    let iss = test_signer(0).await;
+    let aud = test_did(0).await;
+    let sub = test_did(0).await;
 
     let builder = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -39,26 +43,28 @@ async fn issuer_round_trip() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn signature_type_inferred_from_issuer() -> TestResult {
     let invocation = InvocationBuilder::new()
-        .issuer(test_signer(1))
-        .audience(&test_did(2))
-        .subject(&test_did(3))
+        .issuer(test_signer(1).await)
+        .audience(&test_did(2).await)
+        .subject(&test_did(3).await)
         .command(vec!["test".into()])
         .proofs(vec![])
         .try_build()
         .await?;
 
-    assert_eq!(invocation.issuer(), &test_did(1));
+    assert_eq!(invocation.issuer(), &test_did(1).await);
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_has_correct_fields() -> TestResult {
-    let iss = test_signer(10);
-    let aud = test_did(20);
-    let sub = test_did(30);
+    let iss = test_signer(10).await;
+    let aud = test_did(20).await;
+    let sub = test_did(30).await;
     let cmd = vec!["storage".to_string(), "write".to_string()];
 
     let invocation = InvocationBuilder::<Ed25519Signature>::new()
@@ -79,11 +85,12 @@ async fn invocation_has_correct_fields() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_signature_verifies() -> TestResult {
-    let iss = test_signer(42);
-    let aud = test_did(43);
-    let sub = test_did(44);
+    let iss = test_signer(42).await;
+    let aud = test_did(43).await;
+    let sub = test_did(44).await;
 
     let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -100,11 +107,12 @@ async fn invocation_signature_verifies() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_serialization_roundtrip() -> TestResult {
-    let iss = test_signer(50);
-    let aud = test_did(51);
-    let sub = test_did(52);
+    let iss = test_signer(50).await;
+    let aud = test_did(51).await;
+    let sub = test_did(52).await;
 
     let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -131,11 +139,12 @@ async fn invocation_serialization_roundtrip() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_with_explicit_nonce_is_deterministic() -> TestResult {
-    let iss = test_signer(70);
-    let aud = test_did(71);
-    let sub = test_did(72);
+    let iss = test_signer(70).await;
+    let aud = test_did(71).await;
+    let sub = test_did(72).await;
     let nonce = Nonce::generate_16()?;
 
     // Build two invocations with the same nonce
@@ -183,12 +192,13 @@ async fn invocation_with_explicit_nonce_is_deterministic() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_different_signers_different_signatures() -> TestResult {
-    let iss1 = test_signer(80);
-    let iss2 = test_signer(81);
-    let aud = test_did(82);
-    let sub = test_did(83);
+    let iss1 = test_signer(80).await;
+    let iss2 = test_signer(81).await;
+    let aud = test_did(82).await;
+    let sub = test_did(83).await;
     let nonce = Nonce::generate_16()?;
 
     let invocation1 = InvocationBuilder::<Ed25519Signature>::new()
@@ -227,13 +237,14 @@ async fn invocation_different_signers_different_signatures() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn invocation_with_arguments() -> TestResult {
     use std::collections::BTreeMap;
 
-    let iss = test_signer(90);
-    let aud = test_did(91);
-    let sub = test_did(92);
+    let iss = test_signer(90).await;
+    let aud = test_did(91).await;
+    let sub = test_did(92).await;
 
     let mut args = BTreeMap::new();
     args.insert("path".to_string(), Promised::String("/foo/bar".to_string()));

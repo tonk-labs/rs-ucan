@@ -667,7 +667,7 @@ mod tests {
     mod serialization {
         use super::*;
 
-        #[cfg(feature = "property_test")]
+        #[cfg(all(feature = "property_test", not(target_arch = "wasm32")))]
         mod proptest_tests {
             use super::*;
             use proptest::prelude::*;

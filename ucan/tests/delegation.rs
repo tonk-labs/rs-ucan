@@ -8,28 +8,28 @@ use ucan::{
     delegation::{builder::DelegationBuilder, Delegation},
     subject::Subject,
 };
-use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Principal, Ed25519Signer};
+use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Signer};
 use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 /// Create a deterministic test signer from a seed.
-fn test_signer(seed: u8) -> Ed25519Signer {
-    ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
+async fn test_signer(seed: u8) -> Ed25519Signer {
+    Ed25519Signer::import(&[seed; 32]).await.unwrap()
 }
 
 /// Create a deterministic test DID from a seed.
-fn test_did(seed: u8) -> Did {
-    test_signer(seed).did()
+async fn test_did(seed: u8) -> Did {
+    test_signer(seed).await.did()
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn issuer_round_trip() -> TestResult {
-    let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-    let aud: Ed25519Principal = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-        .unwrap()
-        .into();
-    let sub: Ed25519Principal = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-        .unwrap()
-        .into();
+    let iss = test_signer(0).await;
+    let aud = test_signer(1).await;
+    let sub = test_signer(2).await;
 
     let builder = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -43,17 +43,18 @@ async fn issuer_round_trip() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn signature_type_inferred_from_issuer() -> TestResult {
     let delegation = DelegationBuilder::new()
-        .issuer(test_signer(1))
-        .audience(&test_did(2))
+        .issuer(test_signer(1).await)
+        .audience(&test_did(2).await)
         .subject(Subject::Any)
         .command(vec!["test".into()])
         .try_build()
         .await?;
 
-    assert_eq!(delegation.issuer(), &test_did(1));
+    assert_eq!(delegation.issuer(), &test_did(1).await);
     Ok(())
 }
 
@@ -93,10 +94,11 @@ fn delegation_b64_fixture_roundtrip() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_any_subject_roundtrips() -> TestResult {
-    let iss = test_signer(1);
-    let aud = test_did(2);
+    let iss = test_signer(1).await;
+    let aud = test_did(2).await;
 
     let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss)
@@ -118,11 +120,12 @@ async fn delegation_any_subject_roundtrips() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_has_correct_fields() -> TestResult {
-    let iss = test_signer(10);
-    let aud = test_did(20);
-    let sub = test_did(30);
+    let iss = test_signer(10).await;
+    let aud = test_did(20).await;
+    let sub = test_did(30).await;
     let cmd = vec!["storage".to_string(), "read".to_string()];
 
     let delegation = DelegationBuilder::<Ed25519Signature>::new()
@@ -142,11 +145,12 @@ async fn delegation_has_correct_fields() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_signature_verifies() -> TestResult {
-    let iss = test_signer(42);
-    let aud = test_did(43);
-    let sub = test_did(44);
+    let iss = test_signer(42).await;
+    let aud = test_did(43).await;
+    let sub = test_did(44).await;
 
     let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -162,11 +166,12 @@ async fn delegation_signature_verifies() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_serialization_roundtrip() -> TestResult {
-    let iss = test_signer(50);
-    let aud = test_did(51);
-    let sub = test_did(52);
+    let iss = test_signer(50).await;
+    let aud = test_did(51).await;
+    let sub = test_did(52).await;
 
     let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -192,10 +197,11 @@ async fn delegation_serialization_roundtrip() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_with_any_subject() -> TestResult {
-    let iss = test_signer(60);
-    let aud = test_did(61);
+    let iss = test_signer(60).await;
+    let aud = test_did(61).await;
 
     let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
@@ -213,11 +219,12 @@ async fn delegation_with_any_subject() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
-    let iss = test_signer(70);
-    let aud = test_did(71);
-    let sub = test_did(72);
+    let iss = test_signer(70).await;
+    let aud = test_did(71).await;
+    let sub = test_did(72).await;
     let nonce = Nonce::generate_16()?;
 
     // Build two delegations with the same nonce
@@ -263,11 +270,12 @@ async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
     Ok(())
 }
 
-#[tokio::test]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
 async fn delegation_different_signers_different_signatures() -> TestResult {
-    let iss1 = test_signer(80);
-    let iss2 = test_signer(81);
-    let aud = test_did(82);
+    let iss1 = test_signer(80).await;
+    let iss2 = test_signer(81).await;
+    let aud = test_did(82).await;
     let nonce = Nonce::generate_16()?;
 
     let delegation1 = DelegationBuilder::<Ed25519Signature>::new()

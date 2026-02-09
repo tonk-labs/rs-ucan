@@ -253,7 +253,7 @@ impl<'a, T> Arbitrary<'a> for Select<T> {
     }
 }
 
-#[cfg(all(test, feature = "property_test"))]
+#[cfg(all(test, feature = "property_test", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::ipld::InternalIpld;

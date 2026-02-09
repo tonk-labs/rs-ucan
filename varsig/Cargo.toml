@@ -28,10 +28,14 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-rand = "0.8.5"
 testresult = "0.4.1"
+
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
 tokio-test = "0.4"
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [features]
 default = ["es256", "es256k", "ed25519"]

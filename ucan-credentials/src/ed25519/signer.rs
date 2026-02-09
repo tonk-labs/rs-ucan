@@ -264,36 +264,44 @@ mod tests {
 
         assert_ne!(sig1, sig2);
 
-        assert!(<Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
-            signer1.ed25519_did(),
-            msg,
-            &sig1
-        )
-        .await
-        .is_ok());
-        assert!(<Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
-            signer2.ed25519_did(),
-            msg,
-            &sig2
-        )
-        .await
-        .is_ok());
+        assert!(
+            <Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
+                signer1.ed25519_did(),
+                msg,
+                &sig1
+            )
+            .await
+            .is_ok()
+        );
+        assert!(
+            <Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
+                signer2.ed25519_did(),
+                msg,
+                &sig2
+            )
+            .await
+            .is_ok()
+        );
 
         // Cross-verification should fail
-        assert!(<Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
-            signer1.ed25519_did(),
-            msg,
-            &sig2
-        )
-        .await
-        .is_err());
-        assert!(<Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
-            signer2.ed25519_did(),
-            msg,
-            &sig1
-        )
-        .await
-        .is_err());
+        assert!(
+            <Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
+                signer1.ed25519_did(),
+                msg,
+                &sig2
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            <Ed25519Principal as varsig::Verifier<Ed25519Signature>>::verify(
+                signer2.ed25519_did(),
+                msg,
+                &sig1
+            )
+            .await
+            .is_err()
+        );
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
@@ -402,139 +410,12 @@ mod tests {
         .await
         .expect("Original verifier should accept double-roundtripped signature");
     }
-
-    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
-    #[cfg_attr(
-        all(target_arch = "wasm32", target_os = "unknown"),
-        wasm_bindgen_test::wasm_bindgen_test
-    )]
-    async fn build_delegation_with_signer() {
-        use ucan::{delegation::builder::DelegationBuilder, subject::Subject};
-
-        let signer = test_signer(10).await;
-        let aud_signer = test_signer(20).await;
-        let aud_did: Did = aud_signer.did();
-
-        let delegation = DelegationBuilder::<Ed25519Signature>::new()
-            .issuer(signer.clone())
-            .audience(&aud_did)
-            .subject(Subject::Any)
-            .command(vec!["test".to_string(), "command".to_string()])
-            .try_build()
-            .await
-            .expect("Failed to build delegation");
-
-        let signer_did: Did = signer.did();
-        assert_eq!(delegation.issuer(), &signer_did);
-        assert_eq!(delegation.audience(), &aud_did);
-        assert_eq!(delegation.subject(), &Subject::Any);
-    }
-
-    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
-    #[cfg_attr(
-        all(target_arch = "wasm32", target_os = "unknown"),
-        wasm_bindgen_test::wasm_bindgen_test
-    )]
-    async fn delegation_serialization_roundtrip() {
-        use ucan::{delegation::builder::DelegationBuilder, subject::Subject};
-
-        let signer = test_signer(10).await;
-        let aud_signer = test_signer(20).await;
-
-        let delegation = DelegationBuilder::<Ed25519Signature>::new()
-            .issuer(signer.clone())
-            .audience(&aud_signer)
-            .subject(Subject::Any)
-            .command(vec!["roundtrip".to_string()])
-            .try_build()
-            .await
-            .unwrap();
-
-        let bytes = serde_ipld_dagcbor::to_vec(&delegation).unwrap();
-
-        let roundtripped: ucan::delegation::Delegation<Ed25519Signature> =
-            serde_ipld_dagcbor::from_slice(&bytes).unwrap();
-
-        assert_eq!(roundtripped.issuer(), delegation.issuer());
-        assert_eq!(roundtripped.audience(), delegation.audience());
-        assert_eq!(roundtripped.subject(), delegation.subject());
-        assert_eq!(roundtripped.command(), delegation.command());
-    }
-
-    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
-    #[cfg_attr(
-        all(target_arch = "wasm32", target_os = "unknown"),
-        wasm_bindgen_test::wasm_bindgen_test
-    )]
-    async fn build_invocation_with_signer() {
-        use crate::ed25519::Ed25519KeyResolver;
-        use ucan::invocation::builder::InvocationBuilder;
-
-        let operator_signer = test_signer(30).await;
-        let subject_signer = test_signer(40).await;
-        let subject_did: Did = subject_signer.did();
-
-        let invocation = InvocationBuilder::<Ed25519Signature>::new()
-            .issuer(operator_signer.clone())
-            .audience(&subject_did)
-            .subject(&subject_did)
-            .command(vec!["storage".to_string(), "get".to_string()])
-            .arguments(std::collections::BTreeMap::new())
-            .proofs(vec![])
-            .try_build()
-            .await
-            .expect("Failed to build invocation");
-
-        let operator_did: Did = operator_signer.did();
-        assert_eq!(invocation.issuer(), &operator_did);
-        assert_eq!(invocation.audience(), &subject_did);
-        assert_eq!(invocation.subject(), &subject_did);
-
-        let resolver = Ed25519KeyResolver;
-        invocation
-            .verify_signature(&resolver)
-            .await
-            .expect("Signature verification failed");
-    }
-
-    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
-    #[cfg_attr(
-        all(target_arch = "wasm32", target_os = "unknown"),
-        wasm_bindgen_test::wasm_bindgen_test
-    )]
-    async fn invocation_serialization_roundtrip() {
-        use ucan::invocation::builder::InvocationBuilder;
-
-        let signer = test_signer(50).await;
-        let subject_did: Did = signer.did();
-
-        let invocation = InvocationBuilder::<Ed25519Signature>::new()
-            .issuer(signer.clone())
-            .audience(&subject_did)
-            .subject(&subject_did)
-            .command(vec!["archive".to_string(), "get".to_string()])
-            .arguments(std::collections::BTreeMap::new())
-            .proofs(vec![])
-            .try_build()
-            .await
-            .expect("Failed to build invocation");
-
-        let bytes =
-            serde_ipld_dagcbor::to_vec(&invocation).expect("Failed to serialize invocation");
-
-        let roundtripped: ucan::Invocation<Ed25519Signature> =
-            serde_ipld_dagcbor::from_slice(&bytes).expect("Failed to deserialize invocation");
-
-        assert_eq!(roundtripped.issuer(), invocation.issuer());
-        assert_eq!(roundtripped.command(), invocation.command());
-    }
 }
 
 // WebCrypto-only tests (extractable keys, non-extractable public key extraction)
 #[cfg(all(test, target_arch = "wasm32", target_os = "unknown"))]
 mod wasm_tests {
     use super::*;
-    use varsig::principal::Principal as _;
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);

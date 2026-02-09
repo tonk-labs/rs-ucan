@@ -11,7 +11,7 @@
 //! provides defense-in-depth: even if an attacker gains code execution in your
 //! service worker, they cannot exfiltrate the private key material.
 
-use crate::key::{KeyExport, WebCryptoError};
+use crate::key::KeyExport;
 use js_sys::{Object, Reflect, Uint8Array};
 use varsig::eddsa::Ed25519Signature;
 use wasm_bindgen::prelude::*;

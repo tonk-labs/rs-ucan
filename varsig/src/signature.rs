@@ -177,9 +177,13 @@ impl<'de, V: SignatureAlgorithm, C: Codec<T>, T> Deserialize<'de> for Varsig<V, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::algorithm::eddsa::{Ed25519, Ed25519Signature};
+    use crate::algorithm::eddsa::Ed25519;
+    use crate::algorithm::eddsa::Ed25519Signature;
     use std::io::{BufRead, Write};
     use testresult::TestResult;
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test;
 
     /// Minimal test codec that just uses serde_bytes-style identity encoding.
     /// Encodes `String` as raw UTF-8 bytes.
@@ -297,7 +301,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn test_sign_and_verify() -> TestResult {
         use super::{signer::Signer, verifier::Verifier};
 
@@ -330,8 +335,7 @@ mod tests {
             count: 42,
         };
 
-        let mut csprng = rand::thread_rng();
-        let dalek_sk = ed25519_dalek::SigningKey::generate(&mut csprng);
+        let dalek_sk = ed25519_dalek::SigningKey::from_bytes(&[42u8; 32]);
         let sk = TestSigner(dalek_sk.clone());
         let vk = TestVerifier(dalek_sk.verifying_key());
         let varsig: Varsig<Ed25519, TestCodec, TestPayload> = Varsig::new(TestCodec);

@@ -80,8 +80,13 @@ impl<S: Signature> DelegationBuilder<S> {
 }
 
 #[allow(private_bounds)]
-impl<S: Signature, Iss: IssuerOrUnset<S>, Audience: DidOrUnset, Sub: SubjectOrUnset, Cmd: CommandOrUnset>
-    DelegationBuilder<S, Iss, Audience, Sub, Cmd>
+impl<
+        S: Signature,
+        Iss: IssuerOrUnset<S>,
+        Audience: DidOrUnset,
+        Sub: SubjectOrUnset,
+        Cmd: CommandOrUnset,
+    > DelegationBuilder<S, Iss, Audience, Sub, Cmd>
 {
     /// Sets the issuer (signer) of the delegation.
     #[must_use]

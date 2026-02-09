@@ -25,8 +25,6 @@ leb128 = "0.2.5"
 nom-unicode.workspace = true
 nom.workspace = true
 nonempty.workspace = true
-proptest = { workspace = true, optional = true }
-proptest-arbitrary-interop = { workspace = true, optional = true }
 serde-value = "0.7"
 serde.workspace = true
 serde_bytes = "0.11.19"
@@ -38,21 +36,28 @@ tracing.workspace = true
 varsig = { path = "../varsig" }
 web-time = "1.1"
 
+# proptest and its transitive deps (wait-timeout, rusty-fork) don't compile for wasm32.
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+proptest = { workspace = true, optional = true }
+proptest-arbitrary-interop = { workspace = true, optional = true }
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2.9", features = ["js"] }
-# getrandom 0.3 is pulled in transitively by proptest → rand 0.9.
-# It needs the wasm_js feature to compile for wasm32-unknown-unknown.
-getrandom_0_3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 
 [dev-dependencies]
 arbitrary = { workspace = true, optional = false }
+base64 = "0.22.1"
 pretty_assertions.workspace = true
 serde_json = "1.0"
 serde_ipld_dagjson.workspace = true
 test-log.workspace = true
 testresult.workspace = true
+ucan-credentials = { path = "../ucan-credentials" }
+
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "0.3"
