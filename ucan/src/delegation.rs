@@ -25,9 +25,9 @@ use serde_ipld_dagcbor::error::CodecError;
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
 use varsig::{did::Did, signature::Signature};
 
-/// Top-level UCAN Delegation.
+/// Grant or delegate a UCAN capability to another.
 ///
-/// Parameterized by `S: Signature` — the signature type (e.g. `Ed25519Signature`).
+/// This type implements the [UCAN Delegation spec](https://github.com/ucan-wg/delegation/blob/main/README.md).
 #[derive(Clone)]
 pub struct Delegation<S: Signature>(Envelope<S, DelegationPayload>);
 
@@ -151,10 +151,9 @@ impl<'de, S: Signature + for<'ze> Deserialize<'ze>> Deserialize<'de> for Delegat
     }
 }
 
-/// UCAN Delegation payload.
+/// The unsigned content of a [`Delegation`].
 ///
-/// Zero generics — all identity fields are concrete `Did`.
-/// Generics (`S: Signature`) live on `Delegation<S>` — the envelope level only.
+/// See the [UCAN Delegation payload spec](https://github.com/ucan-wg/delegation/blob/main/README.md#delegation-payload).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DelegationPayload {
     #[serde(rename = "iss")]

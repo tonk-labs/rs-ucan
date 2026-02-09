@@ -34,10 +34,10 @@ use std::{
 use thiserror::Error;
 use varsig::{Did, Resolver, Signature, Verifier};
 
-/// Top-level UCAN Invocation.
+/// Request to perform a UCAN-authorized action.
 ///
-/// This is the token that commands the receiver to perform some action.
-/// It is backed by UCAN Delegation(s).
+/// This type implements the [UCAN Invocation spec](https://github.com/ucan-wg/invocation/blob/main/README.md).
+/// An invocation references one or more [`Delegation`] proofs that authorize it.
 #[derive(Clone)]
 pub struct Invocation<S: Signature>(Envelope<S, InvocationPayload>);
 
@@ -204,10 +204,9 @@ impl<'de, S: Signature + for<'ze> Deserialize<'ze>> Deserialize<'de> for Invocat
     }
 }
 
-/// UCAN Invocation payload.
+/// The unsigned content of an [`Invocation`].
 ///
-/// Zero generics — all identity fields are concrete `Did`.
-/// Generics (`S: Signature`) live on `Invocation<S>` — the envelope level only.
+/// See the [UCAN Invocation payload spec](https://github.com/ucan-wg/invocation/blob/main/README.md#invocation-payload).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InvocationPayload {
     #[serde(rename = "iss")]
