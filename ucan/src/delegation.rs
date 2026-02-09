@@ -13,7 +13,7 @@ use crate::{
     crypto::nonce::Nonce,
     envelope::{payload_tag::PayloadTag, Envelope},
     subject::Subject,
-    time::timestamp::Timestamp,
+    time::{TimeRange, Timestamp},
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
 use policy::predicate::Predicate;
@@ -432,6 +432,12 @@ pub enum SignatureVerificationError<E: std::error::Error = signature::Error> {
     /// Cryptographic verification failed.
     #[error("verification error: {0}")]
     VerificationError(signature::Error),
+}
+
+impl<S: Signature> From<&Delegation<S>> for TimeRange {
+    fn from(delegation: &Delegation<S>) -> Self {
+        Self::new(delegation.not_before(), delegation.expiration())
+    }
 }
 
 impl PayloadTag for DelegationPayload {

@@ -17,7 +17,7 @@ use crate::{
     future::FutureKind,
     promise::{Promised, WaitingOn},
     subject::Subject,
-    time::timestamp::Timestamp,
+    time::{range::TimeRange, timestamp::Timestamp},
     Delegation,
 };
 use builder::InvocationBuilder;
@@ -133,21 +133,22 @@ impl<S: Signature> Invocation<S> {
         &self,
         proof_store: &St,
         resolver: &R,
-    ) -> Result<(), InvocationCheckError<K, S, T, St, R>> {
+    ) -> Result<TimeRange, InvocationCheckError<K, S, T, St, R>> {
         // 1. Verify signature
         self.verify_signature(resolver)
             .await
             .map_err(InvocationCheckError::SignatureVerification)?;
 
-        // 2. Check proof chain
-        self.0
+        // 2. Check proof chain and compute valid time range
+        let time_range = self
+            .0
              .1
             .payload
             .check(proof_store)
             .await
             .map_err(InvocationCheckError::StoredCheck)?;
 
-        Ok(())
+        Ok(time_range)
     }
 
     /// Verify only the signature of this invocation using a resolver.
@@ -319,17 +320,20 @@ impl InvocationPayload {
     >(
         &self,
         proof_store: &St,
-    ) -> Result<(), StoredCheckError<K, S, T, St>> {
+    ) -> Result<TimeRange, StoredCheckError<K, S, T, St>> {
         let realized_proofs: Vec<T> = proof_store
             .get_all(&self.proofs)
             .await
             .map_err(StoredCheckError::GetError)?;
         let dlgs: Vec<&Delegation<S>> = realized_proofs.iter().map(Borrow::borrow).collect();
-        self.syntactic_checks(dlgs)?;
-        Ok(())
+        Ok(self.syntactic_checks(dlgs)?)
     }
 
     /// Check if an [`InvocationPayload`] is valid.
+    ///
+    /// Returns the effective [`TimeRange`] — the intersection of all delegation
+    /// and invocation time windows. If the intersection is empty (the chain can
+    /// never be valid at any point in time), returns [`CheckFailed::InvalidTimeWindow`].
     ///
     /// # Errors
     ///
@@ -337,13 +341,16 @@ impl InvocationPayload {
     pub fn syntactic_checks<'a, S: Signature + 'a, I: IntoIterator<Item = &'a Delegation<S>>>(
         &'a self,
         proofs: I,
-    ) -> Result<(), CheckFailed> {
+    ) -> Result<TimeRange, CheckFailed> {
         let args: Ipld = self
             .arguments()
             .iter()
             .map(|(k, v)| v.try_into().map(|ipld| (k.clone(), ipld)))
             .collect::<Result<BTreeMap<String, Ipld>, _>>()?
             .into();
+
+        // Start with the invocation's own time bounds.
+        let mut time_range = TimeRange::from(self);
 
         // Hold a last proof that was verified in the chain.
         let mut authorization: Option<&'a Delegation<S>> = None;
@@ -404,6 +411,9 @@ impl InvocationPayload {
                 }
             }
 
+            // Intersect with this delegation's time bounds.
+            time_range = time_range.intersect(proof.into());
+
             authorization = Some(proof);
         }
 
@@ -426,7 +436,18 @@ impl InvocationPayload {
             });
         }
 
-        Ok(())
+        // Verify the accumulated time window is non-empty.
+        if !time_range.is_valid() {
+            return Err(CheckFailed::InvalidTimeWindow { range: time_range });
+        }
+
+        Ok(time_range)
+    }
+}
+
+impl From<&InvocationPayload> for TimeRange {
+    fn from(payload: &InvocationPayload) -> Self {
+        Self::new(None, payload.expiration)
     }
 }
 
@@ -657,6 +678,14 @@ pub enum CheckFailed {
         subject: Did,
         /// The delegation's issuer (used as implied subject).
         issuer: Did,
+    },
+
+    /// The intersection of all time bounds in the delegation chain is empty.
+    /// There is no point in time at which this invocation could be valid.
+    #[error("Delegation chain has no valid time window: {range}")]
+    InvalidTimeWindow {
+        /// The empty time range that was computed.
+        range: TimeRange,
     },
 }
 
