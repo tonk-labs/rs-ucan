@@ -14,14 +14,6 @@ use std::{fmt, str::FromStr};
 pub struct Did(String);
 
 impl Did {
-    /// Create a `Did` from a raw DID string.
-    ///
-    /// Does not validate the string — use [`FromStr`] for validation.
-    #[must_use]
-    pub const fn new(raw: String) -> Self {
-        Self(raw)
-    }
-
     /// Get the raw DID string.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -43,6 +35,18 @@ impl Did {
             .split(':')
             .next()
             .expect("DID has no method segment")
+    }
+}
+
+impl AsRef<str> for Did {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&Did> for Did {
+    fn from(did: &Did) -> Self {
+        did.clone()
     }
 }
 
@@ -81,6 +85,14 @@ impl FromStr for Did {
     }
 }
 
+impl TryFrom<String> for Did {
+    type Error = DidParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
 impl Serialize for Did {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.0)
@@ -92,4 +104,50 @@ impl<'de> Deserialize<'de> for Did {
         let s = String::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
     }
+}
+
+/// Creates a [`Did`] from a string literal, validated at compile time.
+///
+/// The `"did:"` prefix is added automatically — pass `"method:identifier"`.
+///
+/// ```
+/// use varsig::did;
+///
+/// let d = did!("key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+/// assert_eq!(d.method(), "key");
+///
+/// let w = did!("web:example.com");
+/// assert_eq!(w.method(), "web");
+/// ```
+///
+/// Invalid literals fail at compile time:
+/// ```compile_fail
+/// use varsig::did;
+/// let _bad = did!("nocolon");
+/// ```
+#[macro_export]
+macro_rules! did {
+    ($s:literal) => {{
+        const _: () = {
+            let b = $s.as_bytes();
+            let mut i = 0;
+            let mut found_colon = false;
+            while i < b.len() {
+                if b[i] == b':' {
+                    assert!(i > 0, "DID method must not be empty");
+                    assert!(i + 1 < b.len(), "DID identifier must not be empty");
+                    found_colon = true;
+                    break;
+                }
+                i += 1;
+            }
+            assert!(found_colon, "expected \"method:identifier\"");
+        };
+        // unwrap is safe: the const block above validated the format
+        #[allow(clippy::unwrap_used)]
+        match format!("did:{}", $s).parse::<$crate::did::Did>() {
+            Ok(did) => did,
+            Err(_) => unreachable!(),
+        }
+    }};
 }

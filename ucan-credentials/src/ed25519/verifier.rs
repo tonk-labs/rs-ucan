@@ -90,8 +90,11 @@ impl Verifier<Ed25519Signature> for Ed25519Principal {
 
 // Principal impl for Ed25519Principal
 impl Principal for Ed25519Principal {
+    #[allow(clippy::expect_used)]
     fn did(&self) -> Did {
-        Did::new(self.to_string())
+        self.to_string()
+            .parse()
+            .expect("Ed25519Principal always produces a valid DID")
     }
 }
 
