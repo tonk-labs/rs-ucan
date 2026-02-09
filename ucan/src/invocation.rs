@@ -16,6 +16,7 @@ use crate::{
     envelope::{payload_tag::PayloadTag, Envelope},
     future::FutureKind,
     promise::{Promised, WaitingOn},
+    subject::Subject,
     time::timestamp::Timestamp,
     Delegation,
 };
@@ -344,33 +345,85 @@ impl InvocationPayload {
             .collect::<Result<BTreeMap<String, Ipld>, _>>()?
             .into();
 
-        let expected_issuer = self.subject();
+        // Hold a last proof that was verified in the chain.
+        let mut authorization: Option<&'a Delegation<S>> = None;
 
         for proof in proofs {
-            if !proof.subject().allows(self.subject()) {
-                return Err(CheckFailed::SubjectNotAllowedByProof);
+            // Resolve the delegation's subject: Specific(did) uses that did,
+            // Any falls back to the previously implied subject.
+            let subject = match proof.subject() {
+                Subject::Specific(subject) => subject,
+                Subject::Any => {
+                    if authorization.is_none() {
+                        proof.issuer()
+                    } else {
+                        self.subject()
+                    }
+                }
+            };
+
+            if subject != self.subject() {
+                if authorization.is_none() && matches!(proof.subject(), Subject::Any) {
+                    return Err(CheckFailed::UnprovenSubject {
+                        subject: self.subject().clone(),
+                        issuer: proof.issuer().clone(),
+                    });
+                }
+                return Err(CheckFailed::UnauthorizedSubject {
+                    claimed: self.subject().clone(),
+                    authorized: subject.clone(),
+                });
             }
 
-            if proof.issuer() != expected_issuer {
-                return Err(CheckFailed::InvalidProofIssuerChain);
+            // Verify principal alignment: root proof's issuer must be the
+            // subject, subsequent proofs' issuers must match previous audience.
+            if let Some(evidence) = authorization {
+                if proof.issuer() != evidence.audience() {
+                    return Err(CheckFailed::DelegationAudienceMismatch {
+                        claimed: proof.issuer().clone(),
+                        authorized: evidence.audience().clone(),
+                    });
+                }
+            } else if proof.issuer() != self.subject() {
+                return Err(CheckFailed::UnprovenSubject {
+                    subject: self.subject().clone(),
+                    issuer: proof.issuer().clone(),
+                });
             }
 
             if !self.command.starts_with(proof.command()) {
-                return Err(CheckFailed::CommandMismatch {
-                    found: proof.command().clone(),
-                    expected: self.command.clone(),
+                return Err(CheckFailed::CommandEscalation {
+                    claimed: self.command.clone(),
+                    authorized: proof.command().clone(),
                 });
             }
 
             for predicate in proof.policy() {
                 if !predicate.clone().run(&args)? {
-                    return Err(CheckFailed::PredicateFailed(Box::new(predicate.clone())));
+                    return Err(CheckFailed::PolicyViolation(Box::new(predicate.clone())));
                 }
             }
 
-            // TODO: chain check — each proof's audience should be the next
-            // proof's issuer, and the last proof's audience should be the
-            // invocation's issuer.
+            authorization = Some(proof);
+        }
+
+        // If proof chain was not empty we ensure that invocation
+        // issuer aligns with outmost delegation audience.
+        if let Some(proof) = authorization {
+            if proof.audience() != self.issuer() {
+                return Err(CheckFailed::DelegationAudienceMismatch {
+                    claimed: self.issuer().clone(),
+                    authorized: proof.audience().clone(),
+                });
+            }
+        }
+        // If proof chain was empty it's self issued invocation in
+        // which case we ensure that claimed subject matches issuer
+        else if self.issuer() != self.subject() {
+            return Err(CheckFailed::UnauthorizedSubject {
+                claimed: self.subject().clone(),
+                authorized: self.issuer().clone(),
+            });
         }
 
         Ok(())
@@ -554,34 +607,57 @@ pub enum CheckFailed {
     #[error(transparent)]
     WaitingOnPromise(#[from] WaitingOn),
 
-    /// Error indicating that the command in the invocation does not match the command in the proof
-    #[error("command mismatch: expected {expected:?}, found {found:?}")]
-    CommandMismatch {
-        /// The expected command
-        expected: Command,
+    /// The invocation's command is not covered by the delegation's command scope.
+    #[error("Claimed command '{claimed}' is not authorized by command '{authorized}'")]
+    CommandEscalation {
+        /// The command the invocation is trying to execute.
+        claimed: Command,
 
-        /// The found command
-        found: Command,
+        /// The command that is authorized.
+        authorized: Command,
     },
-    /// Error indicating that a predicate failed to run
+    /// The invocation's arguments are incompatible with a delegation's
+    /// policy — e.g. a selector references a field that doesn't exist,
+    /// or a comparison involves incompatible types (NaN float vs integer).
     #[error(transparent)]
-    PredicateRunError(#[from] RunError),
+    PolicyIncompatibility(#[from] RunError),
 
-    /// Error indicating that a predicate has failed
-    #[error("predicate failed: {0:?}")]
-    PredicateFailed(Box<Predicate>),
+    /// A delegation's policy predicate evaluated to `false` against the
+    /// invocation's arguments. The invocation does not satisfy the
+    /// constraints set by this delegation.
+    #[error("Invocation arguments violate delegation policy: {0:?}")]
+    PolicyViolation(Box<Predicate>),
 
-    /// Error indicating that the proof issuer chain is invalid
-    #[error("invalid proof issuer chain")]
-    InvalidProofIssuerChain,
+    /// A proof's issuer does not match the previous delegation's audience.
+    /// In a valid chain, each proof must be issued by whoever the previous
+    /// link delegated to. For the first proof, that's the subject.
+    #[error("Claimed issuer '{claimed}' does not match authorized audience '{authorized}'")]
+    DelegationAudienceMismatch {
+        /// The DID that was expected as the proof's issuer.
+        claimed: Did,
+        /// The DID that was actually authorized as the audience.
+        authorized: Did,
+    },
 
-    /// Error indicating that the invocation's subject is not allowed by the proof's subject
-    #[error("subject not allowed by proof")]
-    SubjectNotAllowedByProof,
+    /// The subject does not match the invocation subject.
+    #[error("Claimed subject '{claimed}' is not authorized by subject '{authorized}'")]
+    UnauthorizedSubject {
+        /// The invocation's claimed subject.
+        claimed: Did,
+        /// The subject that is authorized.
+        authorized: Did,
+    },
 
-    /// Error indicating that the root proof's issuer is not the same as the invocation's subject
-    #[error("root proof issuer is not the subject")]
-    RootProofIssuerIsNotSubject,
+    /// The delegation has no subject (`Any`) and no prior proof established
+    /// one, so the issuer is taken as the implied subject — but it does not
+    /// match the invocation subject.
+    #[error("Delegation issuer '{issuer}' does not match claimed subject '{subject}'")]
+    UnprovenSubject {
+        /// The invocation's claimed subject.
+        subject: Did,
+        /// The delegation's issuer (used as implied subject).
+        issuer: Did,
+    },
 }
 
 /// Errors that can occur when checking an invocation with proofs stored in a delegation store
