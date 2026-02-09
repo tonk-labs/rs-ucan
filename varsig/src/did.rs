@@ -143,11 +143,11 @@ macro_rules! did {
             }
             assert!(found_colon, "expected \"method:identifier\"");
         };
-        // unwrap is safe: the const block above validated the format
-        #[allow(clippy::unwrap_used)]
-        match format!("did:{}", $s).parse::<$crate::did::Did>() {
-            Ok(did) => did,
-            Err(_) => unreachable!(),
-        }
+        #[allow(clippy::expect_used)]
+        format!("did:{}", $s)
+            .parse::<$crate::did::Did>()
+            // The cons block above validated the format ensuring this
+            // never happens
+            .expect("Invalid did 'did:{$s}'")
     }};
 }
