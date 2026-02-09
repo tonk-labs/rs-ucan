@@ -36,8 +36,6 @@ pub type Es256 = EcDsa<Secp256r1, super::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256r1", feature = "sha2_256"))]
 impl SignatureAlgorithm for Es256 {
-    type Signature = p256::ecdsa::Signature;
-
     fn prefix(&self) -> u64 {
         0xec
     }
@@ -61,8 +59,6 @@ pub type Es384 = EcDsa<Secp384r1, super::hash::Sha2_384>;
 
 #[cfg(all(feature = "secp384r1", feature = "sha2_384"))]
 impl SignatureAlgorithm for Es384 {
-    type Signature = p384::ecdsa::Signature;
-
     fn prefix(&self) -> u64 {
         0xec
     }
@@ -86,8 +82,6 @@ pub type Es512 = EcDsa<Secp521r1, super::hash::Sha2_512>;
 
 #[cfg(all(feature = "secp521r1", feature = "sha2_512"))]
 impl SignatureAlgorithm for Es512 {
-    type Signature = p521::ecdsa::Signature;
-
     fn prefix(&self) -> u64 {
         0xec
     }
@@ -111,8 +105,6 @@ pub type Es256k = EcDsa<Secp256k1, super::hash::Sha2_256>;
 
 #[cfg(all(feature = "secp256k1", feature = "sha2_256"))]
 impl SignatureAlgorithm for Es256k {
-    type Signature = k256::ecdsa::Signature;
-
     fn prefix(&self) -> u64 {
         0xec
     }

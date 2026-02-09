@@ -22,8 +22,6 @@ pub type Rs256<const L: usize> = Rsa<L, Sha2_256>;
 
 #[cfg(feature = "rsa")]
 impl SignatureAlgorithm for Rs256<256> {
-    type Signature = rsa::pkcs1v15::Signature;
-
     fn prefix(&self) -> u64 {
         0x1205
     }
@@ -43,8 +41,6 @@ impl SignatureAlgorithm for Rs256<256> {
 
 #[cfg(feature = "rsa")]
 impl SignatureAlgorithm for Rs256<512> {
-    type Signature = rsa::pkcs1v15::Signature;
-
     fn prefix(&self) -> u64 {
         0x1205
     }

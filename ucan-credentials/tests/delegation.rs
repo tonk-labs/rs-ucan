@@ -1,16 +1,15 @@
 //! Delegation integration tests using Ed25519 concrete types.
-//!
-//! These tests were moved from `ucan/src/delegation.rs` since they
-//! depend on concrete Ed25519 key types from `ucan-credentials`.
 
 use base64::prelude::*;
 use testresult::TestResult;
 use ucan::{
     command::Command,
     crypto::nonce::Nonce,
-    delegation::{builder::DelegationBuilder, subject::DelegatedSubject, Delegation},
+    delegation::{builder::DelegationBuilder, Delegation},
+    subject::Subject,
 };
-use ucan_credentials::ed25519::{Ed25519Did, Ed25519Signer};
+use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Principal, Ed25519Signer};
+use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
 
 /// Create a deterministic test signer from a seed.
 fn test_signer(seed: u8) -> Ed25519Signer {
@@ -18,35 +17,43 @@ fn test_signer(seed: u8) -> Ed25519Signer {
 }
 
 /// Create a deterministic test DID from a seed.
-fn test_did(seed: u8) -> Ed25519Did {
-    test_signer(seed).did().clone()
+fn test_did(seed: u8) -> Did {
+    test_signer(seed).did()
 }
 
 #[tokio::test]
 async fn issuer_round_trip() -> TestResult {
     let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-    let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
+    let aud: Ed25519Principal = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
         .unwrap()
         .into();
-    let sub: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
+    let sub: Ed25519Principal = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
         .unwrap()
         .into();
 
-    let builder: DelegationBuilder<
-        Ed25519Signer,
-        Ed25519Signer,
-        Ed25519Did,
-        DelegatedSubject<Ed25519Did>,
-        Command,
-    > = DelegationBuilder::new()
+    let builder = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(DelegatedSubject::Specific(sub))
+        .audience(&aud)
+        .subject(Subject::Specific(sub.did()))
         .command(vec!["read".to_string(), "write".to_string()]);
 
     let delegation = builder.try_build().await?;
 
     assert_eq!(delegation.issuer().to_string(), iss.to_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn signature_type_inferred_from_issuer() -> TestResult {
+    let delegation = DelegationBuilder::new()
+        .issuer(test_signer(1))
+        .audience(&test_did(2))
+        .subject(Subject::Any)
+        .command(vec!["test".into()])
+        .try_build()
+        .await?;
+
+    assert_eq!(delegation.issuer(), &test_did(1));
     Ok(())
 }
 
@@ -57,10 +64,10 @@ fn delegation_b64_fixture_roundtrip() -> TestResult {
     let bytes = BASE64_STANDARD.decode(b64)?;
 
     // Parse as Delegation
-    let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+    let delegation: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
     // Verify fields parsed correctly
-    assert_eq!(delegation.subject(), &DelegatedSubject::Any); // sub: null
+    assert_eq!(delegation.subject(), &Subject::Any); // sub: null
     assert_eq!(delegation.command(), &vec![].into()); // cmd: "/"
     assert_eq!(delegation.expiration(), None); // exp: null
     assert!(delegation.not_before().is_some()); // nbf: 1764028839
@@ -75,7 +82,7 @@ fn delegation_b64_fixture_roundtrip() -> TestResult {
     );
 
     // Deserialize again to verify roundtrip preserves all fields
-    let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&reserialized)?;
+    let roundtripped: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&reserialized)?;
     assert_eq!(roundtripped.subject(), delegation.subject());
     assert_eq!(roundtripped.command(), delegation.command());
     assert_eq!(roundtripped.expiration(), delegation.expiration());
@@ -91,22 +98,22 @@ async fn delegation_any_subject_roundtrips() -> TestResult {
     let iss = test_signer(1);
     let aud = test_did(2);
 
-    let delegation = DelegationBuilder::new()
+    let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss)
-        .audience(aud)
-        .subject(DelegatedSubject::Any)
+        .audience(&aud)
+        .subject(Subject::Any)
         .command(vec!["test".to_string()])
         .try_build()
         .await?;
 
-    assert_eq!(delegation.subject(), &DelegatedSubject::Any);
+    assert_eq!(delegation.subject(), &Subject::Any);
 
     // Serialize to CBOR and deserialize back
     let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
-    let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+    let roundtripped: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
     // Subject should still be Any after roundtrip
-    assert_eq!(roundtripped.subject(), &DelegatedSubject::Any);
+    assert_eq!(roundtripped.subject(), &Subject::Any);
 
     Ok(())
 }
@@ -118,17 +125,18 @@ async fn delegation_has_correct_fields() -> TestResult {
     let sub = test_did(30);
     let cmd = vec!["storage".to_string(), "read".to_string()];
 
-    let delegation = DelegationBuilder::new()
+    let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Specific(sub.clone()))
+        .audience(&aud)
+        .subject(Subject::Specific(sub.clone()))
         .command(cmd.clone())
         .try_build()
         .await?;
 
-    assert_eq!(delegation.issuer(), &iss.did().clone());
+    let iss_did: Did = iss.did();
+    assert_eq!(delegation.issuer(), &iss_did);
     assert_eq!(delegation.audience(), &aud);
-    assert_eq!(delegation.subject(), &DelegatedSubject::Specific(sub));
+    assert_eq!(delegation.subject(), &Subject::Specific(sub));
     assert_eq!(delegation.command(), &Command::new(cmd));
 
     Ok(())
@@ -140,15 +148,16 @@ async fn delegation_signature_verifies() -> TestResult {
     let aud = test_did(43);
     let sub = test_did(44);
 
-    let delegation = DelegationBuilder::new()
+    let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(DelegatedSubject::Specific(sub))
+        .audience(&aud)
+        .subject(Subject::Specific(sub))
         .command(vec!["test".to_string()])
         .try_build()
         .await?;
 
-    delegation.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    delegation.verify_signature(&resolver).await?;
 
     Ok(())
 }
@@ -159,10 +168,10 @@ async fn delegation_serialization_roundtrip() -> TestResult {
     let aud = test_did(51);
     let sub = test_did(52);
 
-    let delegation = DelegationBuilder::new()
+    let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Specific(sub.clone()))
+        .audience(&aud)
+        .subject(Subject::Specific(sub.clone()))
         .command(vec!["roundtrip".to_string()])
         .try_build()
         .await?;
@@ -171,7 +180,7 @@ async fn delegation_serialization_roundtrip() -> TestResult {
     let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
 
     // Deserialize back
-    let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+    let roundtripped: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
     // Verify all fields match
     assert_eq!(roundtripped.issuer(), delegation.issuer());
@@ -188,17 +197,18 @@ async fn delegation_with_any_subject() -> TestResult {
     let iss = test_signer(60);
     let aud = test_did(61);
 
-    let delegation = DelegationBuilder::new()
+    let delegation = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(DelegatedSubject::Any)
+        .audience(&aud)
+        .subject(Subject::Any)
         .command(vec!["any".to_string()])
         .try_build()
         .await?;
 
-    assert_eq!(delegation.subject(), &DelegatedSubject::Any);
+    assert_eq!(delegation.subject(), &Subject::Any);
 
-    delegation.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    delegation.verify_signature(&resolver).await?;
 
     Ok(())
 }
@@ -211,19 +221,19 @@ async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
     let nonce = Nonce::generate_16()?;
 
     // Build two delegations with the same nonce
-    let delegation1 = DelegationBuilder::new()
+    let delegation1 = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Specific(sub.clone()))
+        .audience(&aud)
+        .subject(Subject::Specific(sub.clone()))
         .command(vec!["compare".to_string()])
         .nonce(nonce.clone())
         .try_build()
         .await?;
 
-    let delegation2 = DelegationBuilder::new()
+    let delegation2 = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Specific(sub.clone()))
+        .audience(&aud)
+        .subject(Subject::Specific(sub.clone()))
         .command(vec!["compare".to_string()])
         .nonce(nonce)
         .try_build()
@@ -237,8 +247,9 @@ async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
     assert_eq!(delegation1.nonce(), delegation2.nonce());
 
     // Both signatures should verify
-    delegation1.verify_signature().await?;
-    delegation2.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    delegation1.verify_signature(&resolver).await?;
+    delegation2.verify_signature(&resolver).await?;
 
     // With the same nonce and same signer, the serialized form should be identical
     // because Ed25519 is deterministic
@@ -259,19 +270,19 @@ async fn delegation_different_signers_different_signatures() -> TestResult {
     let aud = test_did(82);
     let nonce = Nonce::generate_16()?;
 
-    let delegation1 = DelegationBuilder::new()
+    let delegation1 = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss1.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Any)
+        .audience(&aud)
+        .subject(Subject::Any)
         .command(vec!["test".to_string()])
         .nonce(nonce.clone())
         .try_build()
         .await?;
 
-    let delegation2 = DelegationBuilder::new()
+    let delegation2 = DelegationBuilder::<Ed25519Signature>::new()
         .issuer(iss2.clone())
-        .audience(aud.clone())
-        .subject(DelegatedSubject::Any)
+        .audience(&aud)
+        .subject(Subject::Any)
         .command(vec!["test".to_string()])
         .nonce(nonce)
         .try_build()
@@ -286,8 +297,9 @@ async fn delegation_different_signers_different_signatures() -> TestResult {
     );
 
     // But both should verify with their respective keys
-    delegation1.verify_signature().await?;
-    delegation2.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    delegation1.verify_signature(&resolver).await?;
+    delegation2.verify_signature(&resolver).await?;
 
     Ok(())
 }

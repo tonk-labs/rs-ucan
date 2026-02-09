@@ -6,6 +6,7 @@ use super::{
     SignatureAlgorithm,
 };
 
+use crate::signature::Signature;
 use signature::SignatureEncoding;
 use std::marker::PhantomData;
 
@@ -96,10 +97,12 @@ impl TryFrom<&[u8]> for Ed25519Signature {
     }
 }
 
+impl Signature for Ed25519Signature {
+    type Algorithm = Ed25519;
+}
+
 #[cfg(all(feature = "edwards25519", feature = "sha2_512"))]
 impl SignatureAlgorithm for Ed25519 {
-    type Signature = Ed25519Signature;
-
     fn prefix(&self) -> u64 {
         0xed
     }

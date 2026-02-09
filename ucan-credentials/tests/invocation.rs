@@ -1,7 +1,4 @@
 //! Invocation integration tests using Ed25519 concrete types.
-//!
-//! These tests were moved from `ucan/src/invocation.rs` since they
-//! depend on concrete Ed25519 key types from `ucan-credentials`.
 
 use testresult::TestResult;
 use ucan::{
@@ -10,7 +7,8 @@ use ucan::{
     invocation::{builder::InvocationBuilder, Invocation},
     promise::Promised,
 };
-use ucan_credentials::ed25519::{Ed25519Did, Ed25519Signer};
+use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Signer};
+use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
 
 /// Create a deterministic test signer from a seed.
 fn test_signer(seed: u8) -> Ed25519Signer {
@@ -18,34 +16,20 @@ fn test_signer(seed: u8) -> Ed25519Signer {
 }
 
 /// Create a deterministic test DID from a seed.
-fn test_did(seed: u8) -> Ed25519Did {
-    test_signer(seed).did().clone()
+fn test_did(seed: u8) -> Did {
+    test_signer(seed).did()
 }
 
 #[tokio::test]
 async fn issuer_round_trip() -> TestResult {
-    use ipld_core::cid::Cid;
-
     let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-    let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-        .unwrap()
-        .into();
+    let aud: Did = test_did(0);
+    let sub: Did = test_did(0);
 
-    let sub: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-        .unwrap()
-        .into();
-
-    let builder: InvocationBuilder<
-        Ed25519Signer,
-        Ed25519Signer,
-        Ed25519Did,
-        Ed25519Did,
-        Command,
-        Vec<Cid>,
-    > = InvocationBuilder::new()
+    let builder = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(sub)
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["read".to_string(), "write".to_string()])
         .proofs(vec![]);
 
@@ -56,22 +40,38 @@ async fn issuer_round_trip() -> TestResult {
 }
 
 #[tokio::test]
+async fn signature_type_inferred_from_issuer() -> TestResult {
+    let invocation = InvocationBuilder::new()
+        .issuer(test_signer(1))
+        .audience(&test_did(2))
+        .subject(&test_did(3))
+        .command(vec!["test".into()])
+        .proofs(vec![])
+        .try_build()
+        .await?;
+
+    assert_eq!(invocation.issuer(), &test_did(1));
+    Ok(())
+}
+
+#[tokio::test]
 async fn invocation_has_correct_fields() -> TestResult {
     let iss = test_signer(10);
     let aud = test_did(20);
     let sub = test_did(30);
     let cmd = vec!["storage".to_string(), "write".to_string()];
 
-    let invocation = InvocationBuilder::new()
+    let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(cmd.clone())
         .proofs(vec![])
         .try_build()
         .await?;
 
-    assert_eq!(invocation.issuer(), &iss.did().clone());
+    let iss_did: Did = iss.did();
+    assert_eq!(invocation.issuer(), &iss_did);
     assert_eq!(invocation.audience(), &aud);
     assert_eq!(invocation.subject(), &sub);
     assert_eq!(invocation.command(), &Command::new(cmd));
@@ -85,16 +85,17 @@ async fn invocation_signature_verifies() -> TestResult {
     let aud = test_did(43);
     let sub = test_did(44);
 
-    let invocation = InvocationBuilder::new()
+    let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(sub)
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["test".to_string()])
         .proofs(vec![])
         .try_build()
         .await?;
 
-    invocation.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    invocation.verify_signature(&resolver).await?;
 
     Ok(())
 }
@@ -105,10 +106,10 @@ async fn invocation_serialization_roundtrip() -> TestResult {
     let aud = test_did(51);
     let sub = test_did(52);
 
-    let invocation = InvocationBuilder::new()
+    let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["roundtrip".to_string()])
         .proofs(vec![])
         .try_build()
@@ -118,7 +119,7 @@ async fn invocation_serialization_roundtrip() -> TestResult {
     let bytes = serde_ipld_dagcbor::to_vec(&invocation)?;
 
     // Deserialize back
-    let roundtripped: Invocation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+    let roundtripped: Invocation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
     // Verify all fields match
     assert_eq!(roundtripped.issuer(), invocation.issuer());
@@ -138,20 +139,20 @@ async fn invocation_with_explicit_nonce_is_deterministic() -> TestResult {
     let nonce = Nonce::generate_16()?;
 
     // Build two invocations with the same nonce
-    let invocation1 = InvocationBuilder::new()
+    let invocation1 = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["compare".to_string()])
         .proofs(vec![])
         .nonce(nonce.clone())
         .try_build()
         .await?;
 
-    let invocation2 = InvocationBuilder::new()
+    let invocation2 = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["compare".to_string()])
         .proofs(vec![])
         .nonce(nonce)
@@ -166,8 +167,9 @@ async fn invocation_with_explicit_nonce_is_deterministic() -> TestResult {
     assert_eq!(invocation1.nonce(), invocation2.nonce());
 
     // Both signatures should verify
-    invocation1.verify_signature().await?;
-    invocation2.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    invocation1.verify_signature(&resolver).await?;
+    invocation2.verify_signature(&resolver).await?;
 
     // With the same nonce and same signer, the serialized form should be identical
     // because Ed25519 is deterministic
@@ -189,20 +191,20 @@ async fn invocation_different_signers_different_signatures() -> TestResult {
     let sub = test_did(83);
     let nonce = Nonce::generate_16()?;
 
-    let invocation1 = InvocationBuilder::new()
+    let invocation1 = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss1.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["test".to_string()])
         .proofs(vec![])
         .nonce(nonce.clone())
         .try_build()
         .await?;
 
-    let invocation2 = InvocationBuilder::new()
+    let invocation2 = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss2.clone())
-        .audience(aud.clone())
-        .subject(sub.clone())
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["test".to_string()])
         .proofs(vec![])
         .nonce(nonce)
@@ -218,8 +220,9 @@ async fn invocation_different_signers_different_signatures() -> TestResult {
     );
 
     // But both should verify with their respective keys
-    invocation1.verify_signature().await?;
-    invocation2.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    invocation1.verify_signature(&resolver).await?;
+    invocation2.verify_signature(&resolver).await?;
 
     Ok(())
 }
@@ -236,10 +239,10 @@ async fn invocation_with_arguments() -> TestResult {
     args.insert("path".to_string(), Promised::String("/foo/bar".to_string()));
     args.insert("count".to_string(), Promised::Integer(42));
 
-    let invocation = InvocationBuilder::new()
+    let invocation = InvocationBuilder::<Ed25519Signature>::new()
         .issuer(iss.clone())
-        .audience(aud)
-        .subject(sub)
+        .audience(&aud)
+        .subject(&sub)
         .command(vec!["storage".to_string(), "read".to_string()])
         .arguments(args.clone())
         .proofs(vec![])
@@ -249,7 +252,8 @@ async fn invocation_with_arguments() -> TestResult {
     assert_eq!(invocation.arguments(), &args);
 
     // Signature should still verify
-    invocation.verify_signature().await?;
+    let resolver = Ed25519KeyResolver;
+    invocation.verify_signature(&resolver).await?;
 
     Ok(())
 }

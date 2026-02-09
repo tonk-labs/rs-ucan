@@ -7,5 +7,7 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod key;
+
 #[cfg(feature = "ed25519")]
 pub mod ed25519;

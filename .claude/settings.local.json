@@ -29,7 +29,8 @@
       "Bash(python3:*)",
       "Bash(git -C /Users/gozala/Projects/rs-ucan show:*)",
       "Bash(rustup toolchain list:*)",
-      "Bash(cargo +1.85 clippy:*)"
+      "Bash(cargo +1.85 clippy:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

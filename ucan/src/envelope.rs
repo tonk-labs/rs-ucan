@@ -10,28 +10,23 @@ use serde::{
     ser::{SerializeMap, SerializeTuple},
     Deserialize, Serialize,
 };
-use signature::SignatureEncoding;
 use std::{fmt, marker::PhantomData};
-use varsig::{algorithm::SignatureAlgorithm, signature::Varsig};
+use varsig::{Signature, Varsig};
 
 /// Top-level Varsig envelope type.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Envelope<
-    V: SignatureAlgorithm<Signature = S>,
-    T: Serialize + for<'ze> Deserialize<'ze>,
-    S: SignatureEncoding,
->(
+///
+/// `S` is the signature type (e.g. `Ed25519Signature`).
+/// `T` is the payload type (e.g. `DelegationPayload`).
+#[derive(Debug, Clone)]
+pub struct Envelope<S: Signature, T: Serialize + for<'ze> Deserialize<'ze>>(
     /// Envelope signature.
     pub S,
     /// Varsig envelope
-    pub EnvelopePayload<V, T>,
+    pub EnvelopePayload<S, T>,
 );
 
-impl<
-        V: SignatureAlgorithm<Signature = S>,
-        T: Serialize + PayloadTag + for<'ze> Deserialize<'ze>,
-        S: SignatureEncoding,
-    > Serialize for Envelope<V, T, S>
+impl<S: Signature, T: Serialize + PayloadTag + for<'ze> Deserialize<'ze>> Serialize
+    for Envelope<S, T>
 {
     fn serialize<Ser: serde::Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
         let mut seq = serializer.serialize_tuple(2)?;
@@ -42,30 +37,26 @@ impl<
     }
 }
 
-impl<
-        'de,
-        V: SignatureAlgorithm<Signature = S>,
-        T: Serialize + for<'ze> Deserialize<'ze>,
-        S: SignatureEncoding + for<'ze> Deserialize<'ze>,
-    > Deserialize<'de> for Envelope<V, T, S>
+impl<'de, S, T> Deserialize<'de> for Envelope<S, T>
+where
+    S: Signature + for<'ze> Deserialize<'ze>,
+    T: Serialize + for<'ze> Deserialize<'ze>,
 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct EnvelopeVisitor<V, T, S>
+        struct EnvelopeVisitor<S, T>
         where
-            V: SignatureAlgorithm<Signature = S>,
+            S: Signature,
             T: Serialize + for<'ze> Deserialize<'ze>,
-            S: SignatureEncoding,
         {
-            marker: std::marker::PhantomData<(V, T, S)>,
+            marker: std::marker::PhantomData<(S, T)>,
         }
 
-        impl<'de, V, T, S> Visitor<'de> for EnvelopeVisitor<V, T, S>
+        impl<'de, S, T> Visitor<'de> for EnvelopeVisitor<S, T>
         where
-            V: SignatureAlgorithm<Signature = S>,
+            S: Signature + Deserialize<'de>,
             T: Serialize + for<'ze> Deserialize<'ze>,
-            S: SignatureEncoding + Deserialize<'de>,
         {
-            type Value = Envelope<V, T, S>;
+            type Value = Envelope<S, T>;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str("a 2-element sequence [signature, payload]")
@@ -86,7 +77,7 @@ impl<
                 let signature = S::try_from(sig_bytes.as_slice())
                     .map_err(|_| de::Error::custom("invalid signature bytes"))?;
 
-                let payload: EnvelopePayload<V, T> = seq
+                let payload: EnvelopePayload<S, T> = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
 
@@ -104,19 +95,19 @@ impl<
 }
 
 /// Inner Varsig envelope payload type.
-#[derive(Debug, Clone, PartialEq)]
-pub struct EnvelopePayload<V: SignatureAlgorithm, T: Serialize + for<'de> Deserialize<'de>> {
+#[derive(Debug, Clone)]
+pub struct EnvelopePayload<S: Signature, T: Serialize + for<'de> Deserialize<'de>> {
     /// Varsig header.
-    pub header: Varsig<V, CborCodec, T>,
+    pub header: Varsig<S::Algorithm, CborCodec, T>,
 
     /// Payload data.
     pub payload: T,
 }
 
-impl<V: SignatureAlgorithm, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Serialize
-    for EnvelopePayload<V, T>
+impl<S: Signature, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Serialize
+    for EnvelopePayload<S, T>
 {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<Ser: serde::Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
         // Serialize as nested format: {"h": <varsig>, "<type_tag>": <payload>}
         let mut map = serializer.serialize_map(Some(2))?;
         map.serialize_entry("h", &self.header)?;
@@ -125,26 +116,26 @@ impl<V: SignatureAlgorithm, T: PayloadTag + Serialize + for<'de> Deserialize<'de
     }
 }
 
-impl<'de, V, T> Deserialize<'de> for EnvelopePayload<V, T>
+impl<'de, S, T> Deserialize<'de> for EnvelopePayload<S, T>
 where
-    V: SignatureAlgorithm,
+    S: Signature,
     T: Serialize + for<'any> Deserialize<'any>,
-    Varsig<V, CborCodec, T>: Deserialize<'de>,
+    Varsig<S::Algorithm, CborCodec, T>: Deserialize<'de>,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct EnvelopeVisitor<V, T>(PhantomData<(V, T)>);
+        struct InnerVisitor<S, T>(PhantomData<(S, T)>);
 
         // Note the different lifetime parameter on the Visitor:
-        impl<'vde, V, T> Visitor<'vde> for EnvelopeVisitor<V, T>
+        impl<'vde, S, T> Visitor<'vde> for InnerVisitor<S, T>
         where
-            V: SignatureAlgorithm,
+            S: Signature,
             T: Serialize + for<'any> Deserialize<'any>,
-            Varsig<V, CborCodec, T>: Deserialize<'vde>,
+            Varsig<S::Algorithm, CborCodec, T>: Deserialize<'vde>,
         {
-            type Value = EnvelopePayload<V, T>;
+            type Value = EnvelopePayload<S, T>;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(r#"a map with "h" and a payload tag"#)
@@ -154,7 +145,7 @@ where
             where
                 M: MapAccess<'vde>,
             {
-                let mut header: Option<Varsig<V, CborCodec, T>> = None;
+                let mut header: Option<Varsig<S::Algorithm, CborCodec, T>> = None;
                 let mut payload: Option<T> = None;
 
                 while let Some(key) = map.next_key::<&str>()? {
@@ -174,8 +165,8 @@ where
                             &varsig_header_bytes,
                         );
 
-                        let varsig_header: Varsig<V, CborCodec, T> =
-                            Varsig::<V, CborCodec, T>::deserialize(bytes_de)?;
+                        let varsig_header: Varsig<S::Algorithm, CborCodec, T> =
+                            Varsig::<S::Algorithm, CborCodec, T>::deserialize(bytes_de)?;
 
                         header = Some(varsig_header);
                     } else {
@@ -194,6 +185,6 @@ where
             }
         }
 
-        deserializer.deserialize_map(EnvelopeVisitor(PhantomData))
+        deserializer.deserialize_map(InnerVisitor::<S, T>(PhantomData))
     }
 }

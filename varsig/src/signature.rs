@@ -1,13 +1,20 @@
-//! Varsig signature — header type, signing/verification traits, and encoding.
+//! Varsig header, signature trait, and signing/verification re-exports.
 
 pub mod signer;
 pub mod verifier;
 
 use super::{Codec, SignatureAlgorithm};
+use ::signature::SignatureEncoding;
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 pub use verifier::Verifier;
+
+/// Cryptographic signature produced by `Signer` and verified by `Verifier`.
+pub trait Signature: SignatureEncoding + Debug {
+    /// The signature algorithm that produces this signature type.
+    type Algorithm: SignatureAlgorithm;
+}
 
 /// Variable signature configuration that ties signature algorithm
 /// to payload encoding, which can be used to sign / verify cryptographic
@@ -15,8 +22,8 @@ pub use verifier::Verifier;
 ///
 /// [varsig]:https://github.com/ChainAgnostic/varsig/blob/main/README.md
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct Varsig<V: SignatureAlgorithm, C: Codec<T>, T> {
-    algorithm: V,
+pub struct Varsig<A: SignatureAlgorithm, C: Codec<T>, T> {
+    algorithm: A,
     codec: C,
     _data: PhantomData<T>,
 }
@@ -298,8 +305,7 @@ mod tests {
         struct TestSigner(ed25519_dalek::SigningKey);
         struct TestVerifier(ed25519_dalek::VerifyingKey);
 
-        impl Verifier for TestVerifier {
-            type Algorithm = Ed25519;
+        impl Verifier<Ed25519Signature> for TestVerifier {
             async fn verify(
                 &self,
                 msg: &[u8],
@@ -311,18 +317,11 @@ mod tests {
             }
         }
 
-        impl Signer for TestSigner {
-            type Algorithm = Ed25519;
-            type Principal = TestVerifier;
-
+        impl Signer<Ed25519Signature> for TestSigner {
             async fn sign(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
                 use signature::Signer as _;
                 let sig = self.0.try_sign(msg)?;
                 Ok(Ed25519Signature::from(sig))
-            }
-
-            fn principal(&self) -> &TestVerifier {
-                unreachable!("principal() not used in this test")
             }
         }
 

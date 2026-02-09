@@ -6,20 +6,15 @@
 pub mod builder;
 pub mod policy;
 pub mod store;
-pub mod subject;
 
-use self::subject::DelegatedSubject;
+use crate::subject::Subject;
 use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{payload_tag::PayloadTag, Envelope},
-    issuer::Issuer,
-    principal::Principal,
     time::timestamp::Timestamp,
-    unset::Unset,
 };
-use builder::DelegationBuilder;
 use ipld_core::{cid::Cid, ipld::Ipld};
 use policy::predicate::Predicate;
 use serde::{
@@ -28,135 +23,148 @@ use serde::{
 };
 use serde_ipld_dagcbor::error::CodecError;
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::{SignatureAlgorithm, Verifier};
+use varsig::{did::Did, signature::Signature};
 
 /// Top-level UCAN Delegation.
+///
+/// Parameterized by `S: Signature` — the signature type (e.g. `Ed25519Signature`).
 #[derive(Clone)]
-pub struct Delegation<D: Principal>(
-    Envelope<
-        <D as Verifier>::Algorithm,
-        DelegationPayload<D>,
-        <<D as Verifier>::Algorithm as SignatureAlgorithm>::Signature,
-    >,
-);
+pub struct Delegation<S: Signature>(Envelope<S, DelegationPayload>);
 
-impl<D: Principal> Delegation<D> {
-    /// Creates a blank [`DelegationBuilder`] instance.
+impl<S: Signature> Delegation<S> {
+    /// Creates a blank [`DelegationBuilder`][builder::DelegationBuilder] instance.
     #[must_use]
-    pub const fn builder<S: Issuer<Principal = D>>(
-    ) -> DelegationBuilder<S, Unset, Unset, Unset, Unset> {
-        DelegationBuilder::new()
+    pub const fn builder() -> builder::DelegationBuilder<S> {
+        builder::DelegationBuilder::new()
     }
 
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D {
+    #[must_use]
+    pub const fn issuer(&self) -> &Did {
         &self.0 .1.payload.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D {
+    #[must_use]
+    pub const fn audience(&self) -> &Did {
         &self.0 .1.payload.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D> {
+    #[must_use]
+    pub const fn subject(&self) -> &Subject {
         &self.0 .1.payload.subject
     }
 
     /// Getter for the `command` field.
+    #[must_use]
     pub const fn command(&self) -> &Command {
         &self.0 .1.payload.command
     }
 
     /// Getter for the `policy` field.
+    #[must_use]
     pub const fn policy(&self) -> &Vec<Predicate> {
         &self.0 .1.payload.policy
     }
 
     /// Getter for the `expiration` field.
+    #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
         self.0 .1.payload.expiration
     }
 
     /// Getter for the `not_before` field.
+    #[must_use]
     pub const fn not_before(&self) -> Option<Timestamp> {
         self.0 .1.payload.not_before
     }
 
     /// Getter for the `meta` field.
+    #[must_use]
     pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
         &self.0 .1.payload.meta
     }
 
     /// Getter for the `nonce` field.
+    #[must_use]
     pub const fn nonce(&self) -> &Nonce {
         &self.0 .1.payload.nonce
     }
 
     /// Compute the CID for this delegation.
+    #[must_use]
     pub fn to_cid(&self) -> Cid {
         to_dagcbor_cid(&self)
     }
 
-    /// Verify only the signature of this delegation.
+    /// Verify only the signature of this delegation using a resolver.
+    ///
+    /// The resolver resolves the issuer DID to a verifier, then verifies
+    /// the signature.
     ///
     /// # Errors
     ///
     /// Returns a [`SignatureVerificationError`] if signature verification fails.
-    pub async fn verify_signature(&self) -> Result<(), SignatureVerificationError> {
+    pub async fn verify_signature<R>(
+        &self,
+        resolver: &R,
+    ) -> Result<(), SignatureVerificationError<R::Error>>
+    where
+        R: varsig::resolver::Resolver<S>,
+    {
         let signature = &self.0 .0;
         let header = &self.0 .1.header;
         let payload = &self.0 .1.payload;
         let encoded = header
             .encode(payload)
             .map_err(SignatureVerificationError::EncodingError)?;
-        payload
-            .issuer()
-            .verify(&encoded, signature)
+        let verifier = resolver
+            .resolve(payload.issuer())
+            .await
+            .map_err(SignatureVerificationError::ResolutionError)?;
+        varsig::signature::Verifier::verify(&verifier, &encoded, signature)
             .await
             .map_err(SignatureVerificationError::VerificationError)
     }
 }
 
-impl<D: Principal> Debug for Delegation<D> {
+impl<S: Signature> Debug for Delegation<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
 }
 
-impl<D: Principal> Serialize for Delegation<D> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl<S: Signature> Serialize for Delegation<S> {
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: serde::Serializer,
+        Ser: serde::Serializer,
     {
         self.0.serialize(serializer)
     }
 }
 
-impl<'de, I: Principal> Deserialize<'de> for Delegation<I>
-where
-    <<I as Verifier>::Algorithm as SignatureAlgorithm>::Signature: for<'ze> Deserialize<'ze>,
-{
+impl<'de, S: Signature + for<'ze> Deserialize<'ze>> Deserialize<'de> for Delegation<S> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
+        let envelope = Envelope::<S, DelegationPayload>::deserialize(deserializer)?;
         Ok(Delegation(envelope))
     }
 }
 
-/// UCAN Delegation
+/// UCAN Delegation payload.
 ///
-/// Grant or delegate a UCAN capability to another. This type implements the
-/// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
+/// Zero generics — all identity fields are concrete `Did`.
+/// Generics (`S: Signature`) live on `Delegation<S>` — the envelope level only.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct DelegationPayload<D: Principal> {
+pub struct DelegationPayload {
     #[serde(rename = "iss")]
-    pub(crate) issuer: D,
+    pub(crate) issuer: Did,
 
     #[serde(rename = "aud")]
-    pub(crate) audience: D,
+    pub(crate) audience: Did,
 
     #[serde(rename = "sub")]
-    pub(crate) subject: DelegatedSubject<D>,
+    pub(crate) subject: Subject,
 
     #[serde(rename = "cmd")]
     pub(crate) command: Command,
@@ -174,79 +182,72 @@ pub struct DelegationPayload<D: Principal> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Principal> DelegationPayload<D> {
+impl DelegationPayload {
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D {
+    #[must_use]
+    pub const fn issuer(&self) -> &Did {
         &self.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D {
+    #[must_use]
+    pub const fn audience(&self) -> &Did {
         &self.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D> {
+    #[must_use]
+    pub const fn subject(&self) -> &Subject {
         &self.subject
     }
 
     /// Getter for the `command` field.
+    #[must_use]
     pub const fn command(&self) -> &Command {
         &self.command
     }
 
     /// Getter for the `policy` field.
+    #[must_use]
     pub const fn policy(&self) -> &Vec<Predicate> {
         &self.policy
     }
 
     /// Getter for the `expiration` field.
+    #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
         self.expiration
     }
 
     /// Getter for the `not_before` field.
+    #[must_use]
     pub const fn not_before(&self) -> Option<Timestamp> {
         self.not_before
     }
 
     /// Getter for the `meta` field.
+    #[must_use]
     pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
         &self.meta
     }
 
     /// Getter for the `nonce` field.
+    #[must_use]
     pub const fn nonce(&self) -> &Nonce {
         &self.nonce
     }
 }
 
-impl<'de, D> Deserialize<'de> for DelegationPayload<D>
-where
-    D: Principal,
-    DelegatedSubject<D>: Deserialize<'de>,
-    Predicate: Deserialize<'de>,
-    Timestamp: Deserialize<'de>,
-    Nonce: Deserialize<'de>,
-    Ipld: Deserialize<'de>,
-{
+impl<'de> Deserialize<'de> for DelegationPayload {
     #[allow(clippy::too_many_lines)]
     fn deserialize<T>(deserializer: T) -> Result<Self, T::Error>
     where
         T: Deserializer<'de>,
     {
-        struct PayloadVisitor<D: Principal>(std::marker::PhantomData<D>);
+        struct PayloadVisitor;
 
-        impl<'de, D> Visitor<'de> for PayloadVisitor<D>
-        where
-            D: Principal,
-            DelegatedSubject<D>: Deserialize<'de>,
-            Predicate: Deserialize<'de>,
-            Timestamp: Deserialize<'de>,
-            Nonce: Deserialize<'de>,
-            Ipld: Deserialize<'de>,
-        {
-            type Value = DelegationPayload<D>;
+        impl<'de> Visitor<'de> for PayloadVisitor {
+            type Value = DelegationPayload;
 
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str("a map with keys iss,aud,sub,cmd,pol,exp,nbf,meta,nonce")
@@ -256,9 +257,9 @@ where
             where
                 A: MapAccess<'de>,
             {
-                let mut issuer: Option<D> = None;
-                let mut audience: Option<D> = None;
-                let mut subject: Option<DelegatedSubject<D>> = None;
+                let mut issuer: Option<Did> = None;
+                let mut audience: Option<Did> = None;
+                let mut subject: Option<Subject> = None;
                 let mut command: Option<Command> = None;
                 let mut policy: Option<Vec<Predicate>> = None;
                 let mut expiration: Option<Option<Timestamp>> = None;
@@ -413,23 +414,27 @@ where
             }
         }
 
-        deserializer.deserialize_map(PayloadVisitor::<D>(std::marker::PhantomData))
+        deserializer.deserialize_map(PayloadVisitor)
     }
 }
 
 /// Error type for delegation signature verification.
 #[derive(Debug, thiserror::Error)]
-pub enum SignatureVerificationError {
+pub enum SignatureVerificationError<E: std::error::Error = signature::Error> {
     /// Payload encoding failed.
     #[error("encoding error: {0}")]
     EncodingError(CodecError),
+
+    /// DID resolution failed.
+    #[error("resolution error: {0}")]
+    ResolutionError(E),
 
     /// Cryptographic verification failed.
     #[error("verification error: {0}")]
     VerificationError(signature::Error),
 }
 
-impl<D: Principal> PayloadTag for DelegationPayload<D> {
+impl PayloadTag for DelegationPayload {
     fn spec_id() -> &'static str {
         "dlg"
     }

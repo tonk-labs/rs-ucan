@@ -6,18 +6,14 @@ pub mod eddsa;
 pub mod hash;
 pub mod rsa;
 
-use ::signature::SignatureEncoding;
 use std::fmt::Debug;
 
 /// Describes a signature algorithm as multicodec tags.
 ///
 /// This trait captures the metadata needed to encode/decode a signature
 /// algorithm in a Varsig header (prefix tag, config tags, reconstruction
-/// from tags). It does NOT know about signers or verifiers.
+/// from tags). It does NOT know about signers, verifiers, or signature types.
 pub trait SignatureAlgorithm: Sized + Debug + Default + Clone {
-    /// The signature type produced by this algorithm.
-    type Signature: SignatureEncoding + Debug;
-
     /// The prefix for the signature type.
     ///
     /// For example, `EdDSA` would be `0xED`.

@@ -1,26 +1,18 @@
-//! Async verification trait.
+//! Signature verification trait.
 
 use std::future::Future;
 
-use crate::algorithm::SignatureAlgorithm;
+use super::Signature;
 
-/// Can verify signatures of a given type.
+/// Verifies that a cryptographic signature is valid for a given payload.
 ///
-/// Each verifier type maps to exactly one signature algorithm
-/// (via the associated `Algorithm` type).
-pub trait Verifier {
-    /// Cryptographic algorithm of the signature this verifier verifies.
-    type Algorithm: SignatureAlgorithm;
-
-    /// Verify that provided signature is for the given payload and was signed
-    /// by the corresponding signer.
-    ///
-    /// # Errors
-    ///
-    /// Returns `signature::Error` if verification fails.
+/// Generic over `S: Signature` so a single type (e.g. a DID key)
+/// can verify multiple signature algorithms.
+pub trait Verifier<S: Signature> {
+    /// Verify that `signature` is valid for `payload`.
     fn verify(
         &self,
         payload: &[u8],
-        signature: &<Self::Algorithm as SignatureAlgorithm>::Signature,
+        signature: &S,
     ) -> impl Future<Output = Result<(), signature::Error>>;
 }

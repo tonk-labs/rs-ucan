@@ -1,14 +1,13 @@
 //! UCAN issuer trait.
 
-use crate::principal::Principal;
-use varsig::signature::signer::Signer;
+use varsig::principal::Principal;
+use varsig::signature::{Signature, Signer};
 
-/// A UCAN issuer — a signer whose principal is a UCAN [`Principal`].
+/// An entity that can issue UCANs: it can sign tokens and is
+/// identified by a DID.
 ///
-/// Extends [`Signer`] with the constraint that its [`Principal`](Signer::Principal)
-/// associated type satisfies the [`Principal`] trait. Automatically
-/// implemented for any `Signer` that meets this requirement.
-pub trait Issuer: Signer<Principal: Principal> {}
+/// Blanket-implemented for any type that is both a [`Signer<S>`]
+/// and a [`Principal`].
+pub trait Issuer<S: Signature>: Signer<S> + Principal {}
 
-// Blanket implementation
-impl<T> Issuer for T where T: Signer<Principal: Principal> {}
+impl<S: Signature, T> Issuer<S> for T where T: Signer<S> + Principal {}
