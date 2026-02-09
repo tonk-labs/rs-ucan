@@ -73,7 +73,6 @@ impl Nonce {
     ///
     /// ```rust
     /// # use ucan::crypto::nonce::Nonce;
-    /// # use ucan::did::Did;
     /// #
     /// let mut salt = "did:example:123".as_bytes().to_vec();
     /// let nonce = Nonce::generate_16().unwrap();
@@ -186,7 +185,7 @@ mod test {
         Ok(())
     }
 
-    #[cfg(feature = "property_test")]
+    #[cfg(all(feature = "property_test", not(target_arch = "wasm32")))]
     mod proptest_tests {
         use super::*;
         use proptest::prelude::*;

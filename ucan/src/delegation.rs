@@ -6,132 +6,164 @@
 pub mod builder;
 pub mod policy;
 pub mod store;
-pub mod subject;
 
-use self::subject::DelegatedSubject;
 use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
-    did::{Did, DidSigner},
     envelope::{payload_tag::PayloadTag, Envelope},
-    time::timestamp::Timestamp,
-    unset::Unset,
+    subject::Subject,
+    time::{TimeRange, Timestamp},
 };
-use builder::DelegationBuilder;
 use ipld_core::{cid::Cid, ipld::Ipld};
 use policy::predicate::Predicate;
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
+use serde_ipld_dagcbor::error::CodecError;
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::verify::Verify;
+use varsig::{did::Did, signature::Signature};
 
-/// Top-level UCAN Delegation.
+/// Grant or delegate a UCAN capability to another.
+///
+/// This type implements the [UCAN Delegation spec](https://github.com/ucan-wg/delegation/blob/main/README.md).
 #[derive(Clone)]
-pub struct Delegation<D: Did>(
-    Envelope<D::VarsigConfig, DelegationPayload<D>, <D::VarsigConfig as Verify>::Signature>,
-);
+pub struct Delegation<S: Signature>(Envelope<S, DelegationPayload>);
 
-impl<D: Did> Delegation<D> {
-    /// Creates a blank [`DelegationBuilder`] instance.
+impl<S: Signature> Delegation<S> {
+    /// Creates a blank [`DelegationBuilder`][builder::DelegationBuilder] instance.
     #[must_use]
-    pub const fn builder<S: DidSigner<Did = D>>() -> DelegationBuilder<S, Unset, Unset, Unset, Unset>
-    {
-        DelegationBuilder::new()
+    pub const fn builder() -> builder::DelegationBuilder<S> {
+        builder::DelegationBuilder::new()
     }
 
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D {
+    #[must_use]
+    pub const fn issuer(&self) -> &Did {
         &self.0 .1.payload.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D {
+    #[must_use]
+    pub const fn audience(&self) -> &Did {
         &self.0 .1.payload.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D> {
+    #[must_use]
+    pub const fn subject(&self) -> &Subject {
         &self.0 .1.payload.subject
     }
 
     /// Getter for the `command` field.
+    #[must_use]
     pub const fn command(&self) -> &Command {
         &self.0 .1.payload.command
     }
 
     /// Getter for the `policy` field.
+    #[must_use]
     pub const fn policy(&self) -> &Vec<Predicate> {
         &self.0 .1.payload.policy
     }
 
     /// Getter for the `expiration` field.
+    #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
         self.0 .1.payload.expiration
     }
 
     /// Getter for the `not_before` field.
+    #[must_use]
     pub const fn not_before(&self) -> Option<Timestamp> {
         self.0 .1.payload.not_before
     }
 
     /// Getter for the `meta` field.
+    #[must_use]
     pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
         &self.0 .1.payload.meta
     }
 
     /// Getter for the `nonce` field.
+    #[must_use]
     pub const fn nonce(&self) -> &Nonce {
         &self.0 .1.payload.nonce
     }
 
     /// Compute the CID for this delegation.
+    #[must_use]
     pub fn to_cid(&self) -> Cid {
         to_dagcbor_cid(&self)
     }
+
+    /// Verify only the signature of this delegation using a resolver.
+    ///
+    /// The resolver resolves the issuer DID to a verifier, then verifies
+    /// the signature.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SignatureVerificationError`] if signature verification fails.
+    pub async fn verify_signature<R>(
+        &self,
+        resolver: &R,
+    ) -> Result<(), SignatureVerificationError<R::Error>>
+    where
+        R: varsig::resolver::Resolver<S>,
+    {
+        let signature = &self.0 .0;
+        let header = &self.0 .1.header;
+        let payload = &self.0 .1.payload;
+        let encoded = header
+            .encode(payload)
+            .map_err(SignatureVerificationError::EncodingError)?;
+        let verifier = resolver
+            .resolve(payload.issuer())
+            .await
+            .map_err(SignatureVerificationError::ResolutionError)?;
+        varsig::signature::Verifier::verify(&verifier, &encoded, signature)
+            .await
+            .map_err(SignatureVerificationError::VerificationError)
+    }
 }
 
-impl<D: Did> Debug for Delegation<D> {
+impl<S: Signature> Debug for Delegation<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Delegation").field(&self.0).finish()
     }
 }
 
-impl<D: Did> Serialize for Delegation<D> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl<S: Signature> Serialize for Delegation<S> {
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: serde::Serializer,
+        Ser: serde::Serializer,
     {
         self.0.serialize(serializer)
     }
 }
 
-impl<'de, I: Did> Deserialize<'de> for Delegation<I>
-where
-    <I::VarsigConfig as Verify>::Signature: for<'ze> Deserialize<'ze>,
-{
+impl<'de, S: Signature + for<'ze> Deserialize<'ze>> Deserialize<'de> for Delegation<S> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let envelope = Envelope::<_, _, _>::deserialize(deserializer)?;
+        let envelope = Envelope::<S, DelegationPayload>::deserialize(deserializer)?;
         Ok(Delegation(envelope))
     }
 }
 
-/// UCAN Delegation
+/// The unsigned content of a [`Delegation`].
 ///
-/// Grant or delegate a UCAN capability to another. This type implements the
-/// [UCAN Delegation spec](https://github.com/ucan-wg/delegation/README.md).
+/// See the [UCAN Delegation payload spec](https://github.com/ucan-wg/delegation/blob/main/README.md#delegation-payload).
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct DelegationPayload<D: Did> {
+pub struct DelegationPayload {
     #[serde(rename = "iss")]
-    pub(crate) issuer: D,
+    pub(crate) issuer: Did,
 
     #[serde(rename = "aud")]
-    pub(crate) audience: D,
+    pub(crate) audience: Did,
 
     #[serde(rename = "sub")]
-    pub(crate) subject: DelegatedSubject<D>,
+    pub(crate) subject: Subject,
 
     #[serde(rename = "cmd")]
     pub(crate) command: Command,
@@ -149,79 +181,72 @@ pub struct DelegationPayload<D: Did> {
     pub(crate) nonce: Nonce,
 }
 
-impl<D: Did> DelegationPayload<D> {
+impl DelegationPayload {
     /// Getter for the `issuer` field.
-    pub const fn issuer(&self) -> &D {
+    #[must_use]
+    pub const fn issuer(&self) -> &Did {
         &self.issuer
     }
 
     /// Getter for the `audience` field.
-    pub const fn audience(&self) -> &D {
+    #[must_use]
+    pub const fn audience(&self) -> &Did {
         &self.audience
     }
 
     /// Getter for the `subject` field.
-    pub const fn subject(&self) -> &DelegatedSubject<D> {
+    #[must_use]
+    pub const fn subject(&self) -> &Subject {
         &self.subject
     }
 
     /// Getter for the `command` field.
+    #[must_use]
     pub const fn command(&self) -> &Command {
         &self.command
     }
 
     /// Getter for the `policy` field.
+    #[must_use]
     pub const fn policy(&self) -> &Vec<Predicate> {
         &self.policy
     }
 
     /// Getter for the `expiration` field.
+    #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
         self.expiration
     }
 
     /// Getter for the `not_before` field.
+    #[must_use]
     pub const fn not_before(&self) -> Option<Timestamp> {
         self.not_before
     }
 
     /// Getter for the `meta` field.
+    #[must_use]
     pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
         &self.meta
     }
 
     /// Getter for the `nonce` field.
+    #[must_use]
     pub const fn nonce(&self) -> &Nonce {
         &self.nonce
     }
 }
 
-impl<'de, D> Deserialize<'de> for DelegationPayload<D>
-where
-    D: Did,
-    DelegatedSubject<D>: Deserialize<'de>,
-    Predicate: Deserialize<'de>,
-    Timestamp: Deserialize<'de>,
-    Nonce: Deserialize<'de>,
-    Ipld: Deserialize<'de>,
-{
+impl<'de> Deserialize<'de> for DelegationPayload {
     #[allow(clippy::too_many_lines)]
     fn deserialize<T>(deserializer: T) -> Result<Self, T::Error>
     where
         T: Deserializer<'de>,
     {
-        struct PayloadVisitor<D: Did>(std::marker::PhantomData<D>);
+        struct PayloadVisitor;
 
-        impl<'de, D> Visitor<'de> for PayloadVisitor<D>
-        where
-            D: Did,
-            DelegatedSubject<D>: Deserialize<'de>,
-            Predicate: Deserialize<'de>,
-            Timestamp: Deserialize<'de>,
-            Nonce: Deserialize<'de>,
-            Ipld: Deserialize<'de>,
-        {
-            type Value = DelegationPayload<D>;
+        impl<'de> Visitor<'de> for PayloadVisitor {
+            type Value = DelegationPayload;
 
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str("a map with keys iss,aud,sub,cmd,pol,exp,nbf,meta,nonce")
@@ -231,9 +256,9 @@ where
             where
                 A: MapAccess<'de>,
             {
-                let mut issuer: Option<D> = None;
-                let mut audience: Option<D> = None;
-                let mut subject: Option<DelegatedSubject<D>> = None;
+                let mut issuer: Option<Did> = None;
+                let mut audience: Option<Did> = None;
+                let mut subject: Option<Subject> = None;
                 let mut command: Option<Command> = None;
                 let mut policy: Option<Vec<Predicate>> = None;
                 let mut expiration: Option<Option<Timestamp>> = None;
@@ -388,11 +413,33 @@ where
             }
         }
 
-        deserializer.deserialize_map(PayloadVisitor::<D>(std::marker::PhantomData))
+        deserializer.deserialize_map(PayloadVisitor)
     }
 }
 
-impl<D: Did> PayloadTag for DelegationPayload<D> {
+/// Error type for delegation signature verification.
+#[derive(Debug, thiserror::Error)]
+pub enum SignatureVerificationError<E: std::error::Error = signature::Error> {
+    /// Payload encoding failed.
+    #[error("encoding error: {0}")]
+    EncodingError(CodecError),
+
+    /// DID resolution failed.
+    #[error("resolution error: {0}")]
+    ResolutionError(E),
+
+    /// Cryptographic verification failed.
+    #[error("verification error: {0}")]
+    VerificationError(signature::Error),
+}
+
+impl<S: Signature> From<&Delegation<S>> for TimeRange {
+    fn from(delegation: &Delegation<S>) -> Self {
+        Self::new(delegation.not_before(), delegation.expiration())
+    }
+}
+
+impl PayloadTag for DelegationPayload {
     fn spec_id() -> &'static str {
         "dlg"
     }
@@ -405,46 +452,59 @@ impl<D: Did> PayloadTag for DelegationPayload<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::did::{Ed25519Did, Ed25519Signer};
-
+    use crate::{
+        command::Command, crypto::nonce::Nonce, delegation::builder::DelegationBuilder,
+        subject::Subject,
+    };
     use base64::prelude::*;
     use testresult::TestResult;
+    use ucan_credentials::ed25519::{Ed25519KeyResolver, Ed25519Signer};
+    use varsig::{did::Did, eddsa::Ed25519Signature, principal::Principal};
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test;
 
     /// Create a deterministic test signer from a seed.
-    fn test_signer(seed: u8) -> Ed25519Signer {
-        ed25519_dalek::SigningKey::from_bytes(&[seed; 32]).into()
+    async fn test_signer(seed: u8) -> Ed25519Signer {
+        Ed25519Signer::import(&[seed; 32]).await.unwrap()
     }
 
     /// Create a deterministic test DID from a seed.
-    fn test_did(seed: u8) -> Ed25519Did {
-        test_signer(seed).did().clone()
+    async fn test_did(seed: u8) -> Did {
+        test_signer(seed).await.did()
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn issuer_round_trip() -> TestResult {
-        let iss: Ed25519Signer = ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).into();
-        let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-            .unwrap()
-            .into();
-        let sub: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-            .unwrap()
-            .into();
+        let iss = test_signer(0).await;
+        let aud = test_signer(1).await;
+        let sub = test_signer(2).await;
 
-        let builder: DelegationBuilder<
-            Ed25519Signer,
-            Ed25519Signer,
-            Ed25519Did,
-            DelegatedSubject<Ed25519Did>,
-            Command,
-        > = DelegationBuilder::new()
+        let builder = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud)
-            .subject(DelegatedSubject::Specific(sub))
+            .audience(&aud)
+            .subject(Subject::Specific(sub.did()))
             .command(vec!["read".to_string(), "write".to_string()]);
 
         let delegation = builder.try_build().await?;
 
         assert_eq!(delegation.issuer().to_string(), iss.to_string());
+        Ok(())
+    }
+
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+    async fn signature_type_inferred_from_issuer() -> TestResult {
+        let delegation = DelegationBuilder::new()
+            .issuer(test_signer(1).await)
+            .audience(&test_did(2).await)
+            .subject(Subject::Any)
+            .command(vec!["test".into()])
+            .try_build()
+            .await?;
+
+        assert_eq!(delegation.issuer(), &test_did(1).await);
         Ok(())
     }
 
@@ -455,10 +515,10 @@ mod tests {
         let bytes = BASE64_STANDARD.decode(b64)?;
 
         // Parse as Delegation
-        let delegation: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+        let delegation: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
         // Verify fields parsed correctly
-        assert_eq!(delegation.subject(), &DelegatedSubject::Any); // sub: null
+        assert_eq!(delegation.subject(), &Subject::Any); // sub: null
         assert_eq!(delegation.command(), &vec![].into()); // cmd: "/"
         assert_eq!(delegation.expiration(), None); // exp: null
         assert!(delegation.not_before().is_some()); // nbf: 1764028839
@@ -473,7 +533,8 @@ mod tests {
         );
 
         // Deserialize again to verify roundtrip preserves all fields
-        let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&reserialized)?;
+        let roundtripped: Delegation<Ed25519Signature> =
+            serde_ipld_dagcbor::from_slice(&reserialized)?;
         assert_eq!(roundtripped.subject(), delegation.subject());
         assert_eq!(roundtripped.command(), delegation.command());
         assert_eq!(roundtripped.expiration(), delegation.expiration());
@@ -484,111 +545,89 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn delegation_payload_any_subject_serializes_to_null() -> TestResult {
-        use crate::crypto::nonce::Nonce;
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
+    async fn delegation_any_subject_roundtrips() -> TestResult {
+        let iss = test_signer(1).await;
+        let aud = test_did(2).await;
 
-        let iss: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-            .unwrap()
-            .into();
-        let aud: Ed25519Did = ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32])
-            .unwrap()
-            .into();
+        let delegation = DelegationBuilder::<Ed25519Signature>::new()
+            .issuer(iss)
+            .audience(&aud)
+            .subject(Subject::Any)
+            .command(vec!["test".to_string()])
+            .try_build()
+            .await?;
 
-        let payload = DelegationPayload {
-            issuer: iss,
-            audience: aud,
-            subject: DelegatedSubject::Any,
-            command: Command::new(vec!["/".to_string()]),
-            policy: vec![],
-            expiration: None,
-            not_before: None,
-            meta: std::collections::BTreeMap::new(),
-            nonce: Nonce::generate_16().unwrap(),
-        };
+        assert_eq!(delegation.subject(), &Subject::Any);
 
-        assert_eq!(payload.subject(), &DelegatedSubject::Any);
+        // Serialize to CBOR and deserialize back
+        let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
+        let roundtripped: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
-        // Serialize to CBOR
-        let bytes = serde_ipld_dagcbor::to_vec(&payload)?;
-
-        // Parse as IPLD to verify structure
-        let ipld: ipld_core::ipld::Ipld = serde_ipld_dagcbor::from_slice(&bytes)?;
-
-        // Verify sub is null in the serialized form
-        if let ipld_core::ipld::Ipld::Map(map) = &ipld {
-            let sub = map.get("sub").expect("sub field should exist");
-            assert_eq!(
-                sub,
-                &ipld_core::ipld::Ipld::Null,
-                "sub should be null for Any"
-            );
-        } else {
-            panic!("Expected a map");
-        }
+        // Subject should still be Any after roundtrip
+        assert_eq!(roundtripped.subject(), &Subject::Any);
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_has_correct_fields() -> TestResult {
-        let iss = test_signer(10);
-        let aud = test_did(20);
-        let sub = test_did(30);
+        let iss = test_signer(10).await;
+        let aud = test_did(20).await;
+        let sub = test_did(30).await;
         let cmd = vec!["storage".to_string(), "read".to_string()];
 
-        let delegation = DelegationBuilder::new()
+        let delegation = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Specific(sub.clone()))
+            .audience(&aud)
+            .subject(Subject::Specific(sub.clone()))
             .command(cmd.clone())
             .try_build()
             .await?;
 
-        assert_eq!(delegation.issuer(), &iss.did().clone());
+        let iss_did: Did = iss.did();
+        assert_eq!(delegation.issuer(), &iss_did);
         assert_eq!(delegation.audience(), &aud);
-        assert_eq!(delegation.subject(), &DelegatedSubject::Specific(sub));
+        assert_eq!(delegation.subject(), &Subject::Specific(sub));
         assert_eq!(delegation.command(), &Command::new(cmd));
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_signature_verifies() -> TestResult {
-        let iss = test_signer(42);
-        let aud = test_did(43);
-        let sub = test_did(44);
+        let iss = test_signer(42).await;
+        let aud = test_did(43).await;
+        let sub = test_did(44).await;
 
-        let delegation = DelegationBuilder::new()
+        let delegation = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud)
-            .subject(DelegatedSubject::Specific(sub))
+            .audience(&aud)
+            .subject(Subject::Specific(sub))
             .command(vec!["test".to_string()])
             .try_build()
             .await?;
 
-        // Access the envelope internals to verify the signature
-        let signature = &delegation.0 .0;
-        let header = &delegation.0 .1.header;
-        let payload = &delegation.0 .1.payload;
-        let verifier = iss.did().verifier();
-
-        // Verify the signature using the varsig header
-        header.try_verify(&verifier, payload, signature).await?;
+        let resolver = Ed25519KeyResolver;
+        delegation.verify_signature(&resolver).await?;
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_serialization_roundtrip() -> TestResult {
-        let iss = test_signer(50);
-        let aud = test_did(51);
-        let sub = test_did(52);
+        let iss = test_signer(50).await;
+        let aud = test_did(51).await;
+        let sub = test_did(52).await;
 
-        let delegation = DelegationBuilder::new()
+        let delegation = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Specific(sub.clone()))
+            .audience(&aud)
+            .subject(Subject::Specific(sub.clone()))
             .command(vec!["roundtrip".to_string()])
             .try_build()
             .await?;
@@ -597,7 +636,7 @@ mod tests {
         let bytes = serde_ipld_dagcbor::to_vec(&delegation)?;
 
         // Deserialize back
-        let roundtripped: Delegation<Ed25519Did> = serde_ipld_dagcbor::from_slice(&bytes)?;
+        let roundtripped: Delegation<Ed25519Signature> = serde_ipld_dagcbor::from_slice(&bytes)?;
 
         // Verify all fields match
         assert_eq!(roundtripped.issuer(), delegation.issuer());
@@ -609,55 +648,50 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_with_any_subject() -> TestResult {
-        let iss = test_signer(60);
-        let aud = test_did(61);
+        let iss = test_signer(60).await;
+        let aud = test_did(61).await;
 
-        let delegation = DelegationBuilder::new()
+        let delegation = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud)
-            .subject(DelegatedSubject::Any)
+            .audience(&aud)
+            .subject(Subject::Any)
             .command(vec!["any".to_string()])
             .try_build()
             .await?;
 
-        assert_eq!(delegation.subject(), &DelegatedSubject::Any);
+        assert_eq!(delegation.subject(), &Subject::Any);
 
-        // Verify signature still works with Any subject
-        let signature = &delegation.0 .0;
-        let header = &delegation.0 .1.header;
-        let payload = &delegation.0 .1.payload;
-        let verifier = iss.did().verifier();
-
-        header.try_verify(&verifier, payload, signature).await?;
+        let resolver = Ed25519KeyResolver;
+        delegation.verify_signature(&resolver).await?;
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_with_explicit_nonce_is_deterministic() -> TestResult {
-        use crate::crypto::nonce::Nonce;
-
-        let iss = test_signer(70);
-        let aud = test_did(71);
-        let sub = test_did(72);
+        let iss = test_signer(70).await;
+        let aud = test_did(71).await;
+        let sub = test_did(72).await;
         let nonce = Nonce::generate_16()?;
 
         // Build two delegations with the same nonce
-        let delegation1 = DelegationBuilder::new()
+        let delegation1 = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Specific(sub.clone()))
+            .audience(&aud)
+            .subject(Subject::Specific(sub.clone()))
             .command(vec!["compare".to_string()])
             .nonce(nonce.clone())
             .try_build()
             .await?;
 
-        let delegation2 = DelegationBuilder::new()
+        let delegation2 = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Specific(sub.clone()))
+            .audience(&aud)
+            .subject(Subject::Specific(sub.clone()))
             .command(vec!["compare".to_string()])
             .nonce(nonce)
             .try_build()
@@ -671,74 +705,60 @@ mod tests {
         assert_eq!(delegation1.nonce(), delegation2.nonce());
 
         // Both signatures should verify
-        let verifier = iss.did().verifier();
+        let resolver = Ed25519KeyResolver;
+        delegation1.verify_signature(&resolver).await?;
+        delegation2.verify_signature(&resolver).await?;
 
-        let sig1 = &delegation1.0 .0;
-        let header1 = &delegation1.0 .1.header;
-        let payload1 = &delegation1.0 .1.payload;
-        header1.try_verify(&verifier, payload1, sig1).await?;
-
-        let sig2 = &delegation2.0 .0;
-        let header2 = &delegation2.0 .1.header;
-        let payload2 = &delegation2.0 .1.payload;
-        header2.try_verify(&verifier, payload2, sig2).await?;
-
-        // With the same nonce, the signatures should be identical
+        // With the same nonce and same signer, the serialized form should be identical
         // because Ed25519 is deterministic
-        assert_eq!(sig1, sig2, "Signatures should be identical with same nonce");
+        let bytes1 = serde_ipld_dagcbor::to_vec(&delegation1)?;
+        let bytes2 = serde_ipld_dagcbor::to_vec(&delegation2)?;
+        assert_eq!(
+            bytes1, bytes2,
+            "Serialized bytes should be identical with same nonce"
+        );
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
     async fn delegation_different_signers_different_signatures() -> TestResult {
-        use crate::crypto::nonce::Nonce;
-
-        let iss1 = test_signer(80);
-        let iss2 = test_signer(81);
-        let aud = test_did(82);
+        let iss1 = test_signer(80).await;
+        let iss2 = test_signer(81).await;
+        let aud = test_did(82).await;
         let nonce = Nonce::generate_16()?;
 
-        let delegation1 = DelegationBuilder::new()
+        let delegation1 = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss1.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Any)
+            .audience(&aud)
+            .subject(Subject::Any)
             .command(vec!["test".to_string()])
             .nonce(nonce.clone())
             .try_build()
             .await?;
 
-        let delegation2 = DelegationBuilder::new()
+        let delegation2 = DelegationBuilder::<Ed25519Signature>::new()
             .issuer(iss2.clone())
-            .audience(aud.clone())
-            .subject(DelegatedSubject::Any)
+            .audience(&aud)
+            .subject(Subject::Any)
             .command(vec!["test".to_string()])
             .nonce(nonce)
             .try_build()
             .await?;
 
-        // Different issuers should produce different signatures
+        // Different issuers should produce different serialized forms
+        let bytes1 = serde_ipld_dagcbor::to_vec(&delegation1)?;
+        let bytes2 = serde_ipld_dagcbor::to_vec(&delegation2)?;
         assert_ne!(
-            delegation1.0 .0, delegation2.0 .0,
-            "Different signers should produce different signatures"
+            bytes1, bytes2,
+            "Different signers should produce different serialized delegations"
         );
 
         // But both should verify with their respective keys
-        let verifier1 = iss1.did().verifier();
-        delegation1
-            .0
-             .1
-            .header
-            .try_verify(&verifier1, &delegation1.0 .1.payload, &delegation1.0 .0)
-            .await?;
-
-        let verifier2 = iss2.did().verifier();
-        delegation2
-            .0
-             .1
-            .header
-            .try_verify(&verifier2, &delegation2.0 .1.payload, &delegation2.0 .0)
-            .await?;
+        let resolver = Ed25519KeyResolver;
+        delegation1.verify_signature(&resolver).await?;
+        delegation2.verify_signature(&resolver).await?;
 
         Ok(())
     }

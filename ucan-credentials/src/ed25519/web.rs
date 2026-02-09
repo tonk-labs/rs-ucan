@@ -11,14 +11,15 @@
 //! provides defense-in-depth: even if an attacker gains code execution in your
 //! service worker, they cannot exfiltrate the private key material.
 
-use super::Ed25519Signature;
-use crate::signer::KeyExport;
-use ed25519_dalek::VerifyingKey as DalekVerifyingKey;
+use crate::key::KeyExport;
 use js_sys::{Object, Reflect, Uint8Array};
-use thiserror::Error;
+use varsig::eddsa::Ed25519Signature;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{CryptoKey, SubtleCrypto};
+
+// Re-export for backwards compatibility
+pub use crate::key::{ExtractableKey, WebCryptoError};
 
 /// WebCrypto-based Ed25519 signing key.
 ///
@@ -152,8 +153,13 @@ impl SigningKey {
     }
 }
 
-impl async_signature::AsyncSigner<Ed25519Signature> for SigningKey {
-    async fn sign_async(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
+impl SigningKey {
+    /// Sign a message using the WebCrypto API.
+    ///
+    /// # Errors
+    ///
+    /// Returns `signature::Error` if signing fails.
+    pub async fn sign_bytes(&self, msg: &[u8]) -> Result<Ed25519Signature, signature::Error> {
         sign(&self.private_key, msg).await
     }
 }
@@ -394,34 +400,6 @@ impl VerifyingKey {
     }
 }
 
-/// Errors that can occur when using WebCrypto signers.
-#[derive(Debug, Clone, Error)]
-pub enum WebCryptoError {
-    /// WebCrypto API is not available.
-    #[error("WebCrypto not available: {0}")]
-    NotAvailable(String),
-
-    /// Key generation failed.
-    #[error("key generation failed: {0}")]
-    KeyGeneration(String),
-
-    /// Key import failed.
-    #[error("key import failed: {0}")]
-    KeyImport(String),
-
-    /// Key export failed.
-    #[error("key export failed: {0}")]
-    KeyExport(String),
-
-    /// Invalid public key.
-    #[error("invalid public key: {0}")]
-    InvalidPublicKey(String),
-
-    /// JavaScript error.
-    #[error("JS error: {0}")]
-    JsError(String),
-}
-
 /// Get the SubtleCrypto interface.
 fn get_subtle_crypto() -> Result<SubtleCrypto, WebCryptoError> {
     let global = js_sys::global();
@@ -542,40 +520,7 @@ impl From<&[u8; 32]> for Pkcs8 {
 // Extractable key support
 // ============================================================================
 
-/// Trait for creating WebCrypto keys with extractable private key material.
-///
-/// By default, [`SigningKey::generate()`] and [`SigningKey::import()`] create
-/// **non-extractable** keys for security. Use this trait when you need
-/// extractable keys (e.g., for key backup or export).
-///
-/// # ⚠️ Security Warning
-///
-/// Extractable keys allow the private key material to be exported from
-/// WebCrypto. Only use extractable keys when you have a specific need
-/// for key export functionality.
-///
-/// # Example
-///
-/// ```ignore
-/// use varsig::signature::eddsa::web::{SigningKey, ExtractableCryptoKey};
-///
-/// // Generate an extractable key
-/// let key = <SigningKey as ExtractableCryptoKey>::generate().await?;
-/// ```
-pub trait ExtractableCryptoKey: Sized {
-    /// Generate a new keypair with extractable private key.
-    fn generate() -> impl std::future::Future<Output = Result<Self, WebCryptoError>>;
-
-    /// Import a keypair from a [`KeyExport`] with extractable private key.
-    fn import(
-        key: impl Into<KeyExport>,
-    ) -> impl std::future::Future<Output = Result<Self, WebCryptoError>>;
-
-    /// Export the key material.
-    fn export(&self) -> impl std::future::Future<Output = Result<KeyExport, WebCryptoError>>;
-}
-
-impl ExtractableCryptoKey for SigningKey {
+impl ExtractableKey for SigningKey {
     async fn generate() -> Result<Self, WebCryptoError> {
         generate(true).await
     }
