@@ -80,10 +80,11 @@ impl<S: Signature> Delegation<S> {
         self.0 .1.payload.not_before
     }
 
-    /// Getter for the `meta` field.
+    /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
-    pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
-        &self.0 .1.payload.meta
+    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+        static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
+        self.0 .1.payload.meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
@@ -174,10 +175,12 @@ pub struct DelegationPayload {
     #[serde(rename = "exp")]
     pub(crate) expiration: Option<Timestamp>,
 
-    #[serde(rename = "nbf")]
+    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none")]
     pub(crate) not_before: Option<Timestamp>,
 
-    pub(crate) meta: BTreeMap<String, Ipld>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) meta: Option<BTreeMap<String, Ipld>>,
+
     pub(crate) nonce: Nonce,
 }
 
@@ -224,10 +227,11 @@ impl DelegationPayload {
         self.not_before
     }
 
-    /// Getter for the `meta` field.
+    /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
-    pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
-        &self.meta
+    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+        static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
+        self.meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
@@ -408,7 +412,7 @@ impl<'de> Deserialize<'de> for DelegationPayload {
                     nonce,
                     expiration: expiration.unwrap_or(None),
                     not_before: not_before.unwrap_or(None),
-                    meta: meta.unwrap_or_default(),
+                    meta,
                 })
             }
         }

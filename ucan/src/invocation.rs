@@ -55,9 +55,10 @@ impl<S: Signature> Invocation<S> {
     }
 
     /// Getter for the `audience` field.
+    /// Returns the subject if no explicit audience was set.
     #[must_use]
-    pub const fn audience(&self) -> &Did {
-        &self.0 .1.payload.audience
+    pub fn audience(&self) -> &Did {
+        self.0 .1.payload.audience()
     }
 
     /// Getter for the `subject` field.
@@ -96,10 +97,11 @@ impl<S: Signature> Invocation<S> {
         self.0 .1.payload.expiration
     }
 
-    /// Getter for the `meta` field.
+    /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
-    pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
-        &self.0 .1.payload.meta
+    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+        static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
+        self.0 .1.payload.meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
@@ -212,8 +214,8 @@ pub struct InvocationPayload {
     #[serde(rename = "iss")]
     pub(crate) issuer: Did,
 
-    #[serde(rename = "aud")]
-    pub(crate) audience: Did,
+    #[serde(rename = "aud", skip_serializing_if = "Option::is_none")]
+    pub(crate) audience: Option<Did>,
 
     #[serde(rename = "sub")]
     pub(crate) subject: Did,
@@ -221,21 +223,24 @@ pub struct InvocationPayload {
     #[serde(rename = "cmd")]
     pub(crate) command: Command,
 
-    #[serde(rename = "arg")]
+    #[serde(rename = "args")]
     pub(crate) arguments: BTreeMap<String, Promised>,
 
     #[serde(rename = "prf")]
     pub(crate) proofs: Vec<Cid>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) cause: Option<Cid>,
 
-    #[serde(rename = "iat")]
+    #[serde(rename = "iat", skip_serializing_if = "Option::is_none")]
     pub(crate) issued_at: Option<Timestamp>,
 
     #[serde(rename = "exp")]
     pub(crate) expiration: Option<Timestamp>,
 
-    pub(crate) meta: BTreeMap<String, Ipld>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) meta: Option<BTreeMap<String, Ipld>>,
+
     pub(crate) nonce: Nonce,
 }
 
@@ -247,9 +252,10 @@ impl InvocationPayload {
     }
 
     /// Getter for the `audience` field.
+    /// Returns the subject if no explicit audience was set.
     #[must_use]
-    pub const fn audience(&self) -> &Did {
-        &self.audience
+    pub fn audience(&self) -> &Did {
+        self.audience.as_ref().unwrap_or(&self.subject)
     }
 
     /// Getter for the `subject` field.
@@ -288,10 +294,11 @@ impl InvocationPayload {
         self.expiration
     }
 
-    /// Getter for the `meta` field.
+    /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
-    pub const fn meta(&self) -> &BTreeMap<String, Ipld> {
-        &self.meta
+    pub fn meta(&self) -> &BTreeMap<String, Ipld> {
+        static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
+        self.meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
@@ -462,7 +469,7 @@ impl<'de> Deserialize<'de> for InvocationPayload {
             type Value = InvocationPayload;
 
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a map with keys iss,aud,sub,cmd,arg,prf,cause,iat,exp,meta,nonce")
+                f.write_str("a map with keys iss,sub,cmd,args,prf,nonce and optional aud,cause,iat,exp,meta")
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -507,9 +514,9 @@ impl<'de> Deserialize<'de> for InvocationPayload {
                             }
                             command = Some(map.next_value()?);
                         }
-                        "arg" => {
+                        "args" => {
                             if arguments.is_some() {
-                                return Err(de::Error::duplicate_field("arg"));
+                                return Err(de::Error::duplicate_field("args"));
                             }
                             arguments = Some(map.next_value()?);
                         }
@@ -574,7 +581,7 @@ impl<'de> Deserialize<'de> for InvocationPayload {
                             return Err(de::Error::unknown_field(
                                 other,
                                 &[
-                                    "iss", "aud", "sub", "cmd", "arg", "prf", "cause", "iat",
+                                    "iss", "aud", "sub", "cmd", "args", "prf", "cause", "iat",
                                     "exp", "meta", "nonce",
                                 ],
                             ));
@@ -583,10 +590,9 @@ impl<'de> Deserialize<'de> for InvocationPayload {
                 }
 
                 let issuer = issuer.ok_or_else(|| de::Error::missing_field("iss"))?;
-                let audience = audience.ok_or_else(|| de::Error::missing_field("aud"))?;
                 let subject = subject.ok_or_else(|| de::Error::missing_field("sub"))?;
                 let command = command.ok_or_else(|| de::Error::missing_field("cmd"))?;
-                let arguments = arguments.ok_or_else(|| de::Error::missing_field("arg"))?;
+                let arguments = arguments.ok_or_else(|| de::Error::missing_field("args"))?;
                 let proofs = proofs.ok_or_else(|| de::Error::missing_field("prf"))?;
                 let nonce = nonce.ok_or_else(|| de::Error::missing_field("nonce"))?;
 
@@ -601,7 +607,7 @@ impl<'de> Deserialize<'de> for InvocationPayload {
                     cause: cause.unwrap_or(None),
                     issued_at: issued_at.unwrap_or(None),
                     expiration: expiration.unwrap_or(None),
-                    meta: meta.unwrap_or_default(),
+                    meta,
                 })
             }
         }

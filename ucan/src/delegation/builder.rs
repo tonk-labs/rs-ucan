@@ -304,7 +304,11 @@ impl<S: Signature, I: Issuer<S>> DelegationBuilder<S, I, Did, Subject, Command> 
             policy: self.policy,
             expiration: self.expiration,
             not_before: self.not_before,
-            meta: self.meta,
+            meta: if self.meta.is_empty() {
+                None
+            } else {
+                Some(self.meta)
+            },
             nonce: self
                 .nonce
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),

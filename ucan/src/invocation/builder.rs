@@ -375,9 +375,14 @@ impl<S: Signature, I: Issuer<S>> InvocationBuilder<S, I, Did, Did, Command, Vec<
     /// ```
     #[allow(clippy::expect_used)]
     pub async fn try_build(self) -> Result<super::Invocation<S>, BuildError> {
+        let audience = if self.audience == self.subject {
+            None
+        } else {
+            Some(self.audience)
+        };
         let payload = super::InvocationPayload {
             issuer: self.issuer.did(),
-            audience: self.audience,
+            audience,
             subject: self.subject,
             command: self.command,
             arguments: self.arguments,
@@ -385,7 +390,11 @@ impl<S: Signature, I: Issuer<S>> InvocationBuilder<S, I, Did, Did, Command, Vec<
             cause: self.cause,
             expiration: self.expiration,
             issued_at: self.issued_at,
-            meta: self.meta,
+            meta: if self.meta.is_empty() {
+                None
+            } else {
+                Some(self.meta)
+            },
             nonce: self
                 .nonce
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
