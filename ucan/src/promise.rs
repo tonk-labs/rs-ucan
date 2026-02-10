@@ -1,9 +1,7 @@
 //! Distributed promises
 
 use ipld_core::{cid::Cid, ipld::Ipld};
-use serde::{
-    de, ser::SerializeMap, Deserialize, Serialize, Serializer,
-};
+use serde::{de, ser::SerializeMap, Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
 use thiserror::Error;
 

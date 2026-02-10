@@ -11,7 +11,7 @@ use crate::{
     cid::to_dagcbor_cid,
     command::Command,
     crypto::nonce::Nonce,
-    envelope::{payload_tag::PayloadTag, Envelope},
+    envelope::{payload_tag::PayloadTag, Envelope, EnvelopePayload},
     subject::Subject,
     time::{TimeRange, Timestamp},
 };
@@ -23,7 +23,7 @@ use serde::{
 };
 use serde_ipld_dagcbor::error::CodecError;
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug};
-use varsig::{did::Did, signature::Signature};
+use varsig::{did::Did, Signature, Verifier};
 
 /// Grant or delegate a UCAN capability to another.
 ///
@@ -41,62 +41,74 @@ impl<S: Signature> Delegation<S> {
     /// Getter for the `issuer` field.
     #[must_use]
     pub const fn issuer(&self) -> &Did {
-        &self.0 .1.payload.issuer
+        &self.payload().issuer
     }
 
     /// Getter for the `audience` field.
     #[must_use]
     pub const fn audience(&self) -> &Did {
-        &self.0 .1.payload.audience
+        &self.payload().audience
     }
 
     /// Getter for the `subject` field.
     #[must_use]
     pub const fn subject(&self) -> &Subject {
-        &self.0 .1.payload.subject
+        &self.payload().subject
     }
 
     /// Getter for the `command` field.
     #[must_use]
     pub const fn command(&self) -> &Command {
-        &self.0 .1.payload.command
+        &self.payload().command
     }
 
     /// Getter for the `policy` field.
     #[must_use]
     pub const fn policy(&self) -> &Vec<Predicate> {
-        &self.0 .1.payload.policy
+        &self.payload().policy
     }
 
     /// Getter for the `expiration` field.
     #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
-        self.0 .1.payload.expiration
+        self.payload().expiration
     }
 
     /// Getter for the `not_before` field.
     #[must_use]
     pub const fn not_before(&self) -> Option<Timestamp> {
-        self.0 .1.payload.not_before
+        self.payload().not_before
     }
 
     /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
     pub fn meta(&self) -> &BTreeMap<String, Ipld> {
         static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
-        self.0 .1.payload.meta.as_ref().unwrap_or(&EMPTY)
+        self.payload().meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
     #[must_use]
     pub const fn nonce(&self) -> &Nonce {
-        &self.0 .1.payload.nonce
+        &self.payload().nonce
     }
 
     /// Compute the CID for this delegation.
     #[must_use]
     pub fn to_cid(&self) -> Cid {
         to_dagcbor_cid(&self)
+    }
+
+    const fn signature(&self) -> &S {
+        &self.0 .0
+    }
+
+    const fn envelope(&self) -> &EnvelopePayload<S, DelegationPayload> {
+        &self.0 .1
+    }
+
+    const fn payload(&self) -> &DelegationPayload {
+        &self.envelope().payload
     }
 
     /// Verify only the signature of this delegation using a resolver.
@@ -114,17 +126,15 @@ impl<S: Signature> Delegation<S> {
     where
         R: varsig::resolver::Resolver<S>,
     {
-        let signature = &self.0 .0;
-        let header = &self.0 .1.header;
-        let payload = &self.0 .1.payload;
-        let encoded = header
-            .encode(payload)
+        let payload = self
+            .envelope()
+            .encode()
             .map_err(SignatureVerificationError::EncodingError)?;
         let verifier = resolver
-            .resolve(payload.issuer())
+            .resolve(self.issuer())
             .await
             .map_err(SignatureVerificationError::ResolutionError)?;
-        varsig::signature::Verifier::verify(&verifier, &encoded, signature)
+        Verifier::verify(&verifier, &payload, self.signature())
             .await
             .map_err(SignatureVerificationError::VerificationError)
     }

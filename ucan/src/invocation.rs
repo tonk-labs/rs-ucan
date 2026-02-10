@@ -13,7 +13,7 @@ use crate::{
         policy::predicate::{Predicate, RunError},
         store::DelegationStore,
     },
-    envelope::{payload_tag::PayloadTag, Envelope},
+    envelope::{payload_tag::PayloadTag, Envelope, EnvelopePayload},
     future::FutureKind,
     promise::{Promised, WaitingOn},
     subject::Subject,
@@ -51,63 +51,63 @@ impl<S: Signature> Invocation<S> {
     /// Getter for the `issuer` field.
     #[must_use]
     pub const fn issuer(&self) -> &Did {
-        &self.0 .1.payload.issuer
+        &self.payload().issuer
     }
 
     /// Getter for the `audience` field.
     /// Returns the subject if no explicit audience was set.
     #[must_use]
     pub fn audience(&self) -> &Did {
-        self.0 .1.payload.audience()
+        self.payload().audience()
     }
 
     /// Getter for the `subject` field.
     #[must_use]
     pub const fn subject(&self) -> &Did {
-        &self.0 .1.payload.subject
+        &self.payload().subject
     }
 
     /// Getter for the `command` field.
     #[must_use]
     pub const fn command(&self) -> &Command {
-        &self.0 .1.payload.command
+        &self.payload().command
     }
 
     /// Getter for the `arguments` field.
     #[must_use]
     pub const fn arguments(&self) -> &BTreeMap<String, Promised> {
-        &self.0 .1.payload.arguments
+        &self.payload().arguments
     }
 
     /// Getter for the `proofs` field.
     #[must_use]
     pub const fn proofs(&self) -> &Vec<Cid> {
-        &self.0 .1.payload.proofs
+        &self.payload().proofs
     }
 
     /// Getter for the `cause` field.
     #[must_use]
     pub const fn cause(&self) -> Option<Cid> {
-        self.0 .1.payload.cause
+        self.payload().cause
     }
 
     /// Getter for the `expiration` field.
     #[must_use]
     pub const fn expiration(&self) -> Option<Timestamp> {
-        self.0 .1.payload.expiration
+        self.payload().expiration
     }
 
     /// Getter for the `meta` field. Returns an empty map when meta is absent.
     #[must_use]
     pub fn meta(&self) -> &BTreeMap<String, Ipld> {
         static EMPTY: BTreeMap<String, Ipld> = BTreeMap::new();
-        self.0 .1.payload.meta.as_ref().unwrap_or(&EMPTY)
+        self.payload().meta.as_ref().unwrap_or(&EMPTY)
     }
 
     /// Getter for the `nonce` field.
     #[must_use]
     pub const fn nonce(&self) -> &Nonce {
-        &self.0 .1.payload.nonce
+        &self.payload().nonce
     }
 
     /// Compute the CID for this invocation.
@@ -143,14 +143,27 @@ impl<S: Signature> Invocation<S> {
 
         // 2. Check proof chain and compute valid time range
         let time_range = self
-            .0
-             .1
-            .payload
+            .payload()
             .check(proof_store)
             .await
             .map_err(InvocationCheckError::StoredCheck)?;
 
         Ok(time_range)
+    }
+
+    #[must_use]
+    const fn signature(&self) -> &S {
+        &self.0 .0
+    }
+
+    #[must_use]
+    const fn envelope(&self) -> &EnvelopePayload<S, InvocationPayload> {
+        &self.0 .1
+    }
+
+    #[must_use]
+    const fn payload(&self) -> &InvocationPayload {
+        &self.envelope().payload
     }
 
     /// Verify only the signature of this invocation using a resolver.
@@ -168,17 +181,15 @@ impl<S: Signature> Invocation<S> {
     where
         R: Resolver<S>,
     {
-        let signature = &self.0 .0;
-        let header = &self.0 .1.header;
-        let payload = &self.0 .1.payload;
-        let encoded = header
-            .encode(payload)
+        let encoded = self
+            .envelope()
+            .encode()
             .map_err(SignatureVerificationError::EncodingError)?;
         let verifier = resolver
-            .resolve(payload.issuer())
+            .resolve(self.issuer())
             .await
             .map_err(SignatureVerificationError::ResolutionError)?;
-        Verifier::verify(&verifier, &encoded, signature)
+        Verifier::verify(&verifier, &encoded, self.signature())
             .await
             .map_err(SignatureVerificationError::VerificationError)
     }
@@ -354,6 +365,15 @@ impl InvocationPayload {
             .map(|(k, v)| v.try_into().map(|ipld| (k.clone(), ipld)))
             .collect::<Result<BTreeMap<String, Ipld>, _>>()?
             .into();
+
+        // Collect proofs and normalize to root-to-leaf order.
+        // The spec is ambiguous about proof ordering in `prf`:
+        // https://github.com/ucan-wg/invocation/issues/41
+        // TODO: settle on a single order once the spec clarifies this.
+        let mut proofs: Vec<&'a Delegation<S>> = proofs.into_iter().collect();
+        if proofs.len() > 1 && proofs.last().is_some_and(|p| p.issuer() == self.subject()) {
+            proofs.reverse();
+        }
 
         // Start with the invocation's own time bounds.
         let mut time_range = TimeRange::from(self);

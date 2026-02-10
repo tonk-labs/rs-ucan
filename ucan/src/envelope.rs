@@ -98,10 +98,33 @@ where
 #[derive(Debug, Clone)]
 pub struct EnvelopePayload<S: Signature, T: Serialize + for<'de> Deserialize<'de>> {
     /// Varsig header.
-    pub header: Varsig<S::Algorithm, CborCodec, T>,
+    pub header: Varsig<S::Algorithm, CborCodec, Self>,
 
     /// Payload data.
     pub payload: T,
+}
+
+impl<S: Signature, T: Serialize + for<'de> Deserialize<'de>> From<T> for EnvelopePayload<S, T> {
+    fn from(payload: T) -> Self {
+        EnvelopePayload {
+            header: Varsig::new(CborCodec),
+            payload,
+        }
+    }
+}
+
+impl<S: Signature, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> EnvelopePayload<S, T> {
+    /// Encode this envelope payload for signing/verification using the header's codec.
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's encoding error if encoding fails.
+    pub fn encode(&self) -> Result<Vec<u8>, <CborCodec as varsig::Codec<Self>>::EncodingError>
+    where
+        CborCodec: varsig::Codec<Self>,
+    {
+        self.header.encode(self)
+    }
 }
 
 impl<S: Signature, T: PayloadTag + Serialize + for<'de> Deserialize<'de>> Serialize
@@ -120,7 +143,7 @@ impl<'de, S, T> Deserialize<'de> for EnvelopePayload<S, T>
 where
     S: Signature,
     T: Serialize + for<'any> Deserialize<'any>,
-    Varsig<S::Algorithm, CborCodec, T>: Deserialize<'de>,
+    Varsig<S::Algorithm, CborCodec, EnvelopePayload<S, T>>: Deserialize<'de>,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -133,7 +156,7 @@ where
         where
             S: Signature,
             T: Serialize + for<'any> Deserialize<'any>,
-            Varsig<S::Algorithm, CborCodec, T>: Deserialize<'vde>,
+            Varsig<S::Algorithm, CborCodec, EnvelopePayload<S, T>>: Deserialize<'vde>,
         {
             type Value = EnvelopePayload<S, T>;
 
@@ -145,7 +168,8 @@ where
             where
                 M: MapAccess<'vde>,
             {
-                let mut header: Option<Varsig<S::Algorithm, CborCodec, T>> = None;
+                let mut header: Option<Varsig<S::Algorithm, CborCodec, EnvelopePayload<S, T>>> =
+                    None;
                 let mut payload: Option<T> = None;
 
                 while let Some(key) = map.next_key::<&str>()? {
@@ -165,8 +189,10 @@ where
                             &varsig_header_bytes,
                         );
 
-                        let varsig_header: Varsig<S::Algorithm, CborCodec, T> =
-                            Varsig::<S::Algorithm, CborCodec, T>::deserialize(bytes_de)?;
+                        let varsig_header: Varsig<S::Algorithm, CborCodec, EnvelopePayload<S, T>> =
+                            Varsig::<S::Algorithm, CborCodec, EnvelopePayload<S, T>>::deserialize(
+                                bytes_de,
+                            )?;
 
                         header = Some(varsig_header);
                     } else {

@@ -5,19 +5,15 @@ use std::{
     io::{BufRead, Write},
 };
 
-/// Codec trait for encoding and decoding payloads.
+/// Codec identity: multicodec code and tag-based construction.
 ///
-/// This trait is a generalization of IPLD codec traits.
-/// Specifically this allows an application to accept multiple codecs
-/// and distinguish with a runtime enum. This is important for Varsig,
-/// since it may need to encode to the configured codec for signature verification.
-pub trait Codec<T>: Sized {
-    /// Encoding error type.
-    type EncodingError: Error;
-
-    /// Decoding error type.
-    type DecodingError: Error;
-
+/// This trait captures the T-independent parts of a codec — the information
+/// needed by the Varsig header for serialization/deserialization (multicodec
+/// code and tag parsing). It is automatically implemented for any type that
+/// implements [`Codec<T>`] for some `T`, but can also be implemented directly
+/// when a codec needs to be used in a Varsig header without binding to a
+/// specific payload type.
+pub trait Format: Sized {
     /// Multicodec code.
     ///
     /// This is not a `const` because an implementation may
@@ -26,6 +22,20 @@ pub trait Codec<T>: Sized {
 
     /// Try to create a codec from a series of tags.
     fn try_from_tags(code: &[u64]) -> Option<Self>;
+}
+
+/// Codec trait for encoding and decoding payloads.
+///
+/// This trait is a generalization of IPLD codec traits.
+/// Specifically this allows an application to accept multiple codecs
+/// and distinguish with a runtime enum. This is important for Varsig,
+/// since it may need to encode to the configured codec for signature verification.
+pub trait Codec<T>: Format {
+    /// Encoding error type.
+    type EncodingError: Error;
+
+    /// Decoding error type.
+    type DecodingError: Error;
 
     /// Encode the payload to the given buffer.
     ///

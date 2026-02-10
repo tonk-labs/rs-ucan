@@ -1,7 +1,6 @@
 //! Typesafe builder for [`Invocation`].
 
 use crate::{
-    codec::CborCodec,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{Envelope, EnvelopePayload},
@@ -13,7 +12,7 @@ use crate::{
 };
 use ipld_core::{cid::Cid, ipld::Ipld};
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{Did, Principal, Signature, Signer, Varsig};
+use varsig::{Did, Principal, Signature, Signer};
 
 /// Typesafe builder for [`Invocation`][super::Invocation].
 ///
@@ -400,19 +399,16 @@ impl<S: Signature, I: Issuer<S>> InvocationBuilder<S, I, Did, Did, Command, Vec<
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        let header: Varsig<S::Algorithm, CborCodec, super::InvocationPayload> =
-            Varsig::new(CborCodec);
+        let envelope = EnvelopePayload::from(payload);
 
-        let encoded = header
-            .encode(&payload)
+        let encoded = envelope
+            .encode()
             .map_err(|e| BuildError::EncodingError(e.to_string()))?;
 
         let sig = Signer::sign(&self.issuer, &encoded)
             .await
             .map_err(BuildError::SigningError)?;
 
-        let payload = EnvelopePayload { header, payload };
-        let envelope = Envelope(sig, payload);
-        Ok(super::Invocation(envelope))
+        Ok(super::Invocation(Envelope(sig, envelope)))
     }
 }

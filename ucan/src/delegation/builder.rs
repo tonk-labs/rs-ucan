@@ -2,7 +2,6 @@
 
 use super::policy::predicate::Predicate;
 use crate::{
-    codec::CborCodec,
     command::Command,
     crypto::nonce::Nonce,
     envelope::{Envelope, EnvelopePayload},
@@ -14,7 +13,7 @@ use crate::{
 };
 use ipld_core::ipld::Ipld;
 use std::{collections::BTreeMap, marker::PhantomData};
-use varsig::{Did, Principal, Signature, Varsig};
+use varsig::{Did, Principal, Signature};
 
 /// Typesafe builder for [`Delegation`][super::Delegation].
 ///
@@ -314,19 +313,16 @@ impl<S: Signature, I: Issuer<S>> DelegationBuilder<S, I, Did, Subject, Command> 
                 .unwrap_or_else(|| Nonce::generate_16().expect("failed to generate nonce")),
         };
 
-        let header: Varsig<S::Algorithm, CborCodec, super::DelegationPayload> =
-            Varsig::new(CborCodec);
+        let envelope = EnvelopePayload::from(payload);
 
-        let encoded = header
-            .encode(&payload)
+        let encoded = envelope
+            .encode()
             .map_err(|e| BuildError::EncodingError(e.to_string()))?;
 
-        let sig = varsig::signature::Signer::sign(&self.issuer, &encoded)
+        let signature = varsig::signature::Signer::sign(&self.issuer, &encoded)
             .await
             .map_err(BuildError::SigningError)?;
 
-        let payload = EnvelopePayload { header, payload };
-        let envelope = Envelope(sig, payload);
-        Ok(super::Delegation(envelope))
+        Ok(super::Delegation(Envelope(signature, envelope)))
     }
 }
