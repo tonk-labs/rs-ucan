@@ -29,6 +29,7 @@ varsig = { path = "../varsig" }
 # WASM dependencies (always available on wasm32-unknown-unknown)
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+getrandom_04 = { workspace = true }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

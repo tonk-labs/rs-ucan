@@ -77,7 +77,11 @@ mod invocation_conformance {
         use super::*;
         use ucan_credentials::ed25519::Ed25519KeyResolver;
 
-        #[tokio::test]
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        use wasm_bindgen_test::wasm_bindgen_test;
+
+        #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+        #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
         async fn test_all_valid_invocations_check() -> TestResult {
             let valid = invocation_fixture()["valid"]
                 .as_array()
@@ -201,6 +205,9 @@ mod invocation_conformance {
         use ucan::invocation::{CheckFailed, InvocationCheckError, StoredCheckError};
         use ucan_credentials::ed25519::Ed25519KeyResolver;
 
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        use wasm_bindgen_test::wasm_bindgen_test;
+
         fn try_parse_invocation(
             entry: &serde_json::Value,
         ) -> Result<Invocation<Ed25519Signature>, String> {
@@ -254,7 +261,8 @@ mod invocation_conformance {
             Ok(())
         }
 
-        #[tokio::test]
+        #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]
+        #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test)]
         async fn test_all_invalid_invocations_fail_check() -> TestResult {
             let now = ucan::time::Timestamp::now();
             let invalid = invocation_fixture()["invalid"]
