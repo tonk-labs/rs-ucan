@@ -361,7 +361,7 @@ mod policy_conformance {
 
             static SCENARIO_ONE_FIXTURE: OnceLock<(Ipld, Vec<Vec<Predicate>>)> = OnceLock::new();
             fn scenario_one_fixture() -> &'static (Ipld, Vec<Vec<Predicate>>) {
-                SCENARIO_ONE_FIXTURE.get_or_init(|| setup(0))
+                SCENARIO_ONE_FIXTURE.get_or_init(|| setup(1))
             }
 
             #[test]
@@ -379,15 +379,18 @@ mod policy_conformance {
 
             static SCENARIO_TWO_FIXTURE: OnceLock<(Ipld, Vec<Vec<Predicate>>)> = OnceLock::new();
             fn scenario_two_fixture() -> &'static (Ipld, Vec<Vec<Predicate>>) {
-                SCENARIO_TWO_FIXTURE.get_or_init(|| setup(0))
+                SCENARIO_TWO_FIXTURE.get_or_init(|| setup(2))
             }
 
             #[test]
             fn test_zeroth_policy() -> TestResult {
                 let (args, policies) = scenario_two_fixture();
-                for policy in &policies[0] {
-                    assert!(!policy.clone().run(args)?);
-                }
+                // The conjunction must not hold: at least one predicate
+                // must fail (return false or error).
+                let all_pass = policies[0]
+                    .iter()
+                    .all(|p| p.clone().run(args).unwrap_or(false));
+                assert!(!all_pass);
                 Ok(())
             }
         }
@@ -397,15 +400,18 @@ mod policy_conformance {
 
             static SCENARIO_THREE_FIXTURE: OnceLock<(Ipld, Vec<Vec<Predicate>>)> = OnceLock::new();
             fn scenario_three_fixture() -> &'static (Ipld, Vec<Vec<Predicate>>) {
-                SCENARIO_THREE_FIXTURE.get_or_init(|| setup(0))
+                SCENARIO_THREE_FIXTURE.get_or_init(|| setup(3))
             }
 
             #[test]
             fn test_zeroth_policy() -> TestResult {
                 let (args, policies) = scenario_three_fixture();
-                for policy in &policies[0] {
-                    assert!(!policy.clone().run(args)?);
-                }
+                // The conjunction must not hold: at least one predicate
+                // must fail (return false or error).
+                let all_pass = policies[0]
+                    .iter()
+                    .all(|p| p.clone().run(args).unwrap_or(false));
+                assert!(!all_pass);
                 Ok(())
             }
         }

@@ -25,3 +25,4 @@ dist
 # Added by cargo
 
 /target
+.claude

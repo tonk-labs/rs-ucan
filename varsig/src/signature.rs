@@ -3,7 +3,7 @@
 pub mod signer;
 pub mod verifier;
 
-use super::{Codec, SignatureAlgorithm};
+use super::{Codec, Format, SignatureAlgorithm};
 use ::signature::SignatureEncoding;
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
@@ -22,13 +22,13 @@ pub trait Signature: SignatureEncoding + Debug {
 ///
 /// [varsig]:https://github.com/ChainAgnostic/varsig/blob/main/README.md
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct Varsig<A: SignatureAlgorithm, C: Codec<T>, T> {
+pub struct Varsig<A: SignatureAlgorithm, C, T> {
     algorithm: A,
     codec: C,
     _data: PhantomData<T>,
 }
 
-impl<V: SignatureAlgorithm, C: Codec<T>, T> Varsig<V, C, T> {
+impl<V: SignatureAlgorithm, C, T> Varsig<V, C, T> {
     /// Create a new Varsig header.
     ///
     /// The signature algorithm is constructed via `Default`.
@@ -74,7 +74,7 @@ impl<V: SignatureAlgorithm, C: Codec<T>, T> Varsig<V, C, T> {
     }
 }
 
-impl<V: SignatureAlgorithm, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
+impl<V: SignatureAlgorithm, C: Format, T> Serialize for Varsig<V, C, T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -121,7 +121,7 @@ impl<V: SignatureAlgorithm, C: Codec<T>, T> Serialize for Varsig<V, C, T> {
     }
 }
 
-impl<'de, V: SignatureAlgorithm, C: Codec<T>, T> Deserialize<'de> for Varsig<V, C, T> {
+impl<'de, V: SignatureAlgorithm, C: Format, T> Deserialize<'de> for Varsig<V, C, T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -189,10 +189,7 @@ mod tests {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct TestCodec;
 
-    impl Codec<String> for TestCodec {
-        type EncodingError = std::io::Error;
-        type DecodingError = std::io::Error;
-
+    impl Format for TestCodec {
         fn multicodec_code(&self) -> u64 {
             0x71 // same as DAG-CBOR for header serialization tests
         }
@@ -204,6 +201,11 @@ mod tests {
                 None
             }
         }
+    }
+
+    impl Codec<String> for TestCodec {
+        type EncodingError = std::io::Error;
+        type DecodingError = std::io::Error;
 
         fn encode_payload<W: Write>(
             &self,
@@ -233,18 +235,6 @@ mod tests {
     impl Codec<TestPayload> for TestCodec {
         type EncodingError = std::io::Error;
         type DecodingError = std::io::Error;
-
-        fn multicodec_code(&self) -> u64 {
-            0x71
-        }
-
-        fn try_from_tags(code: &[u64]) -> Option<Self> {
-            if code.len() == 1 && code[0] == 0x71 {
-                Some(TestCodec)
-            } else {
-                None
-            }
-        }
 
         fn encode_payload<W: Write>(
             &self,
@@ -279,25 +269,22 @@ mod tests {
     }
 
     #[test]
-    fn test_ed25519_varsig_header_construction() -> TestResult {
+    fn test_ed25519_varsig_header_construction() {
         let fixture: Varsig<Ed25519, TestCodec, String> = Varsig::new(TestCodec);
         assert_eq!(fixture.algorithm(), &Ed25519::default());
         assert_eq!(fixture.codec(), &TestCodec);
-        Ok(())
     }
 
     #[test]
-    fn test_algorithm_reader() -> TestResult {
+    fn test_algorithm_reader() {
         let varsig: Varsig<Ed25519, TestCodec, String> = Varsig::new(TestCodec);
         assert_eq!(varsig.algorithm(), &Ed25519::default());
-        Ok(())
     }
 
     #[test]
-    fn test_codec_reader() -> TestResult {
+    fn test_codec_reader() {
         let varsig: Varsig<Ed25519, TestCodec, String> = Varsig::new(TestCodec);
         assert_eq!(varsig.codec(), &TestCodec);
-        Ok(())
     }
 
     #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), tokio::test)]

@@ -19,6 +19,9 @@ ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
 env_logger = "0.11.8"
 futures = "0.3.31"
 getrandom = "0.2.9"
+# quickcheck 1.1+ pulls in rand 0.10 -> getrandom 0.4 which requires
+# wasm_js feature on wasm32-unknown-unknown targets.
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 ipld-core = { version = "0.4.2", features = ["arb", "serde"] }
 nom = "8.0"
 nom-unicode = "0.4"
@@ -64,7 +67,7 @@ todo = "warn"
 unneeded_field_pattern = "warn"
 unwrap_used = "warn"
 wildcard_enum_match_arm = "warn"
-multiple_crate_versions = "allow" # getrandom v0.2/v0.3 coexist via transitive deps
+multiple_crate_versions = "allow" # getrandom v0.2/v0.4 coexist via transitive deps
 
 all = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }

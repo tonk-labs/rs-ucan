@@ -43,6 +43,7 @@ proptest-arbitrary-interop = { workspace = true, optional = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2.9", features = ["js"] }
+getrandom_04 = { workspace = true }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 

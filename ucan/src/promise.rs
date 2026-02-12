@@ -1,7 +1,7 @@
 //! Distributed promises
 
 use ipld_core::{cid::Cid, ipld::Ipld};
-use serde::{Deserialize, Serialize};
+use serde::{de, ser::SerializeMap, Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
@@ -30,7 +30,7 @@ pub enum Promise<T, E> {
 /// A recursive data structure whose leaves may be [`Ipld`] or promises.
 ///
 /// [`Promised`] resolves to regular [`Ipld`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Promised {
     /// Resolved null.
     Null,
@@ -67,6 +67,87 @@ pub enum Promised {
 
     /// Recursively promised map.
     Map(BTreeMap<String, Promised>),
+}
+
+impl Serialize for Promised {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Null => serializer.serialize_none(),
+            Self::Bool(b) => serializer.serialize_bool(*b),
+            Self::Integer(i) => serializer.serialize_i128(*i),
+            Self::Float(f) => serializer.serialize_f64(*f),
+            Self::String(s) => serializer.serialize_str(s),
+            Self::Bytes(b) => {
+                // Serialize as IPLD bytes
+                let ipld = Ipld::Bytes(b.clone());
+                ipld.serialize(serializer)
+            }
+            Self::Link(c) => {
+                let ipld = Ipld::Link(*c);
+                ipld.serialize(serializer)
+            }
+            Self::WaitOk(c) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("ucan/await/ok", c)?;
+                map.end()
+            }
+            Self::WaitErr(c) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("ucan/await/err", c)?;
+                map.end()
+            }
+            Self::WaitAny(c) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("ucan/await/*", c)?;
+                map.end()
+            }
+            Self::List(l) => l.serialize(serializer),
+            Self::Map(m) => m.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Promised {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        // Deserialize as Ipld first, then convert
+        let ipld = Ipld::deserialize(deserializer)?;
+        Ok(from_ipld(ipld))
+    }
+}
+
+/// Convert an `Ipld` value into a `Promised`, detecting promise maps.
+fn from_ipld(ipld: Ipld) -> Promised {
+    match ipld {
+        Ipld::Null => Promised::Null,
+        Ipld::Bool(b) => Promised::Bool(b),
+        Ipld::Integer(i) => Promised::Integer(i),
+        Ipld::Float(f) => Promised::Float(f),
+        Ipld::String(s) => Promised::String(s),
+        Ipld::Bytes(b) => Promised::Bytes(b),
+        Ipld::Link(c) => Promised::Link(c),
+        Ipld::List(l) => Promised::List(l.into_iter().map(from_ipld).collect()),
+        Ipld::Map(m) => {
+            // Check for promise maps: single-entry maps with a promise key
+            if m.len() == 1 {
+                if let Some(Ipld::Link(cid)) = m.get("ucan/await/ok") {
+                    return Promised::WaitOk(*cid);
+                }
+                if let Some(Ipld::Link(cid)) = m.get("ucan/await/err") {
+                    return Promised::WaitErr(*cid);
+                }
+                if let Some(Ipld::Link(cid)) = m.get("ucan/await/*") {
+                    return Promised::WaitAny(*cid);
+                }
+            }
+            Promised::Map(m.into_iter().map(|(k, v)| (k, from_ipld(v))).collect())
+        }
+    }
 }
 
 impl TryFrom<&Promised> for Ipld {

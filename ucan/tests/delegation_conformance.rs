@@ -39,4 +39,26 @@ mod delegation_conformance {
 
         Ok(())
     }
+
+    #[test]
+    fn test_all_valid_delegations_roundtrip() -> TestResult {
+        let valid = delegation_fixture()["valid"]
+            .as_array()
+            .expect("valid is an array");
+        for (idx, entry) in valid.iter().enumerate() {
+            let name = entry["name"].as_str().unwrap();
+            let b64_txt = entry["token"].as_str().expect("token is a string");
+            let original_bytes = BASE64_STANDARD.decode(b64_txt)?;
+            let delegation: Delegation<Ed25519Signature> =
+                serde_ipld_dagcbor::from_slice(&original_bytes)
+                    .unwrap_or_else(|e| panic!("failed to decode '{name}': {e}"));
+            let re_encoded = serde_ipld_dagcbor::to_vec(&delegation)
+                .unwrap_or_else(|e| panic!("failed to re-encode '{name}': {e}"));
+            assert_eq!(
+                original_bytes, re_encoded,
+                "roundtrip mismatch for delegation '{name}' (idx={idx})"
+            );
+        }
+        Ok(())
+    }
 }
